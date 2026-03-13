@@ -63,8 +63,7 @@ def _is_documents_upload_validation_error(
         return False
 
     return any(
-        isinstance(error, dict)
-        and tuple(error.get("loc", ()))[:2] == ("body", "file")
+        isinstance(error, dict) and tuple(error.get("loc", ()))[:2] == ("body", "file")
         for error in errors
     )
 

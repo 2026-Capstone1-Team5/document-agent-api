@@ -41,8 +41,7 @@ class DocumentService:
                     result=ParseResult(
                         schemaVersion="1.0",
                         markdown=(
-                            "# Sample Document\n\n"
-                            "This is seeded mock data for the documents API.\n"
+                            "# Sample Document\n\nThis is seeded mock data for the documents API.\n"
                         ),
                         canonicalJson={
                             "document": {
@@ -55,7 +54,9 @@ class DocumentService:
                                     "blocks": [
                                         {
                                             "type": "paragraph",
-                                            "text": "This is seeded mock data for the documents API.",
+                                            "text": (
+                                                "This is seeded mock data for the documents API."
+                                            ),
                                         }
                                     ],
                                 }
@@ -80,11 +81,7 @@ class DocumentService:
         )
         if filename:
             lowered = filename.lower()
-            items = [
-                item
-                for item in items
-                if lowered in item.document.filename.lower()
-            ]
+            items = [item for item in items if lowered in item.document.filename.lower()]
         total = len(items)
         paged_items = items[offset : offset + limit]
         return DocumentListResponse(

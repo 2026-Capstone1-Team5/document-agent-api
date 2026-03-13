@@ -8,7 +8,6 @@ from src.common.exception_handlers import (
 )
 from src.documents.router import router as documents_router
 
-
 app = FastAPI(
     title="document-agent-api",
     version="0.1.0",

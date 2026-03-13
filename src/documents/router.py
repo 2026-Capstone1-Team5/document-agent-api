@@ -13,7 +13,6 @@ from src.documents.schemas import (
 )
 from src.documents.service import DocumentService
 
-
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
 
@@ -111,21 +110,13 @@ def download_document_result(
         return PlainTextResponse(
             content=result.result.markdown,
             media_type="text/markdown",
-            headers={
-                "Content-Disposition": (
-                    f'attachment; filename="{result.document.id}.md"'
-                )
-            },
+            headers={"Content-Disposition": (f'attachment; filename="{result.document.id}.md"')},
         )
 
     if format == "json":
         return JSONResponse(
             content=result.result.canonical_json,
-            headers={
-                "Content-Disposition": (
-                    f'attachment; filename="{result.document.id}.json"'
-                )
-            },
+            headers={"Content-Disposition": (f'attachment; filename="{result.document.id}.json"')},
         )
 
     raise ApiError(
