@@ -28,13 +28,13 @@ uv sync
 Start the development server:
 
 ```bash
-uv run fastapi dev app/main.py
+uv run fastapi dev src/main.py
 ```
 
 Start without the FastAPI dev watcher:
 
 ```bash
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+uv run uvicorn src.main:app --host 0.0.0.0 --port 8000
 ```
 
 Health check:
@@ -47,7 +47,7 @@ curl http://127.0.0.1:8000/healthz
 
 ```text
 document-agent-api/
-  app/
+  src/
     __init__.py
     main.py
   pyproject.toml
