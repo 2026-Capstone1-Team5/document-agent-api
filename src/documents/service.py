@@ -39,7 +39,6 @@ class DocumentService:
                         updatedAt=created_at,
                     ),
                     result=ParseResult(
-                        schemaVersion="1.0",
                         markdown=(
                             "# Sample Document\n\nThis is seeded mock data for the documents API.\n"
                         ),
@@ -120,7 +119,6 @@ class DocumentService:
                 updatedAt=created_at,
             ),
             result=ParseResult(
-                schemaVersion="1.0",
                 markdown=self._build_markdown(title=title, filename=filename),
                 canonicalJson=self._build_canonical_json(title=title, filename=filename),
             ),

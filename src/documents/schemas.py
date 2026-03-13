@@ -18,7 +18,6 @@ class DocumentSummary(BaseSchema):
 
 
 class ParseResult(BaseSchema):
-    schema_version: str | None = Field(alias="schemaVersion")
     markdown: str
     canonical_json: dict[str, Any] = Field(alias="canonicalJson")
 
