@@ -1,3 +1,5 @@
+from importlib import import_module
+
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 
@@ -6,7 +8,6 @@ from src.common.exception_handlers import (
     api_error_handler,
     request_validation_error_handler,
 )
-from src.debug.router import router as debug_router
 from src.documents.router import router as documents_router
 
 app = FastAPI(
@@ -17,8 +18,15 @@ app = FastAPI(
 app.add_exception_handler(ApiError, api_error_handler)
 app.add_exception_handler(Exception, api_error_handler)
 app.add_exception_handler(RequestValidationError, request_validation_error_handler)
-app.include_router(debug_router)
 app.include_router(documents_router)
+
+try:
+    debug_module = import_module("src.debug.router")
+except ModuleNotFoundError:
+    debug_module = None
+
+if debug_module is not None:
+    app.include_router(debug_module.router)
 
 
 @app.get("/healthz", tags=["system"])
