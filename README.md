@@ -48,6 +48,14 @@ export DATABASE_URL='postgresql+psycopg://postgres:postgres@127.0.0.1:5432/docum
 On Railway, use `DATABASE_URL`.
 `postgres://...` and `postgresql://...` are automatically normalized for SQLAlchemy `psycopg`.
 
+Set allowed CORS origins:
+
+```bash
+export CORS_ALLOW_ORIGINS='https://document-agent-web.vercel.app'
+```
+
+You can provide multiple origins with a comma-separated string.
+
 Apply database migrations:
 
 ```bash

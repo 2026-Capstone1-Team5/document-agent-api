@@ -2,17 +2,29 @@ from importlib import import_module
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 
 from src.common.errors import ApiError
 from src.common.exception_handlers import (
     api_error_handler,
     request_validation_error_handler,
 )
+from src.config import get_settings
 from src.documents.router import router as documents_router
+
+settings = get_settings()
 
 app = FastAPI(
     title="document-agent-api",
     version="0.1.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_allow_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 app.add_exception_handler(ApiError, api_error_handler)
