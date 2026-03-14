@@ -42,8 +42,11 @@ uv sync
 Set the database URL:
 
 ```bash
-export DOCUMENT_AGENT_API_DATABASE_URL='postgresql+psycopg://postgres:postgres@127.0.0.1:5432/document_agent_api'
+export DATABASE_URL='postgresql+psycopg://postgres:postgres@127.0.0.1:5432/document_agent_api'
 ```
+
+On Railway, use `DATABASE_URL`.
+`postgres://...` and `postgresql://...` are automatically normalized for SQLAlchemy `psycopg`.
 
 Apply database migrations:
 
