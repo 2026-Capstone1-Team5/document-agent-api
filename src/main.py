@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
+from src.auth.router import router as auth_router
 from src.common.errors import ApiError
 from src.common.exception_handlers import (
     api_error_handler,
@@ -30,6 +31,7 @@ app.add_middleware(
 app.add_exception_handler(ApiError, api_error_handler)
 app.add_exception_handler(Exception, api_error_handler)
 app.add_exception_handler(RequestValidationError, request_validation_error_handler)
+app.include_router(auth_router)
 app.include_router(documents_router)
 
 try:

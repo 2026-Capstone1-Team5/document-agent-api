@@ -1,15 +1,25 @@
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, DateTime, ForeignKey, LargeBinary, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database import Base, utcnow
 
+if TYPE_CHECKING:
+    from src.auth.models import UserModel
+
 
 class DocumentModel(Base):
     __tablename__ = "documents"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    owner_user_id: Mapped[str | None] = mapped_column(
+        String(36),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(255), nullable=False)
     file_data: Mapped[bytes | None] = mapped_column(
@@ -29,6 +39,7 @@ class DocumentModel(Base):
         cascade="all, delete-orphan",
         single_parent=True,
     )
+    owner: Mapped["UserModel | None"] = relationship(back_populates="documents")
 
 
 class DocumentResultModel(Base):

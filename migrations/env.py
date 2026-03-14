@@ -13,6 +13,7 @@ if str(ROOT_DIR) not in sys.path:
 
 from src.config import get_settings  # noqa: E402
 from src.database import Base  # noqa: E402
+from src.auth import models as auth_models  # noqa: F401, E402
 from src.documents import models  # noqa: F401, E402
 
 

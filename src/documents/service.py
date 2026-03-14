@@ -25,6 +25,7 @@ class DocumentService:
         limit: int,
         offset: int,
         filename: str | None,
+        owner_user_id: str,
     ) -> DocumentListResponse:
         statement = (
             select(DocumentModel)
@@ -37,9 +38,14 @@ class DocumentService:
                     DocumentModel.updated_at,
                 )
             )
+            .where(DocumentModel.owner_user_id == owner_user_id)
             .order_by(DocumentModel.created_at.desc())
         )
-        count_statement = select(func.count()).select_from(DocumentModel)
+        count_statement = (
+            select(func.count())
+            .select_from(DocumentModel)
+            .where(DocumentModel.owner_user_id == owner_user_id)
+        )
 
         if filename:
             pattern = f"%{filename}%"
@@ -56,7 +62,12 @@ class DocumentService:
             offset=offset,
         )
 
-    def get_document(self, document_id: UUID) -> DocumentResponse:
+    def get_document(
+        self,
+        document_id: UUID,
+        *,
+        owner_user_id: str,
+    ) -> DocumentResponse:
         statement = (
             select(DocumentModel)
             .options(
@@ -68,14 +79,22 @@ class DocumentService:
                     DocumentModel.updated_at,
                 )
             )
-            .where(DocumentModel.id == str(document_id))
+            .where(
+                DocumentModel.id == str(document_id),
+                DocumentModel.owner_user_id == owner_user_id,
+            )
         )
         document = self.session.scalars(statement).first()
         if document is None:
             raise DocumentNotFoundError(document_id)
         return DocumentResponse(document=self._to_document_summary(document))
 
-    def get_document_result(self, document_id: UUID) -> DocumentParseResponse:
+    def get_document_result(
+        self,
+        document_id: UUID,
+        *,
+        owner_user_id: str,
+    ) -> DocumentParseResponse:
         statement = (
             select(DocumentModel)
             .options(
@@ -92,7 +111,10 @@ class DocumentService:
                     DocumentResultModel.canonical_json,
                 ),
             )
-            .where(DocumentModel.id == str(document_id))
+            .where(
+                DocumentModel.id == str(document_id),
+                DocumentModel.owner_user_id == owner_user_id,
+            )
         )
         document = self.session.scalars(statement).first()
         if document is None or document.result is None:
@@ -102,6 +124,7 @@ class DocumentService:
     def create_document(
         self,
         *,
+        owner_user_id: str,
         filename: str,
         content_type: str,
         file_data: bytes,
@@ -111,6 +134,7 @@ class DocumentService:
 
         document = DocumentModel(
             id=document_id,
+            owner_user_id=owner_user_id,
             filename=filename,
             content_type=content_type,
             file_data=file_data,
@@ -128,8 +152,12 @@ class DocumentService:
 
         return self._to_document_parse_response(document)
 
-    def delete_document(self, document_id: UUID) -> None:
-        document = self.session.get(DocumentModel, str(document_id))
+    def delete_document(self, document_id: UUID, *, owner_user_id: str) -> None:
+        statement = select(DocumentModel).where(
+            DocumentModel.id == str(document_id),
+            DocumentModel.owner_user_id == owner_user_id,
+        )
+        document = self.session.scalars(statement).first()
         if document is None:
             raise DocumentNotFoundError(document_id)
 
