@@ -48,6 +48,7 @@ async def create_document(
     return service.create_document(
         filename=filename,
         content_type=file.content_type or "application/octet-stream",
+        file_data=file_bytes,
     )
 
 

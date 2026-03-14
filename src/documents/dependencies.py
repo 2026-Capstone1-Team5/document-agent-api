@@ -1,9 +1,11 @@
+from fastapi import Depends
+from sqlalchemy.orm import Session
+
+from src.database import get_db_session
 from src.documents.service import DocumentService
 
-# TODO: Replace the in-memory service state with SQLAlchemy-backed persistence
-# once `models.py`, sessions, and migrations are introduced.
-_document_service = DocumentService.seeded()
 
-
-def get_document_service() -> DocumentService:
-    return _document_service
+def get_document_service(
+    session: Session = Depends(get_db_session),
+) -> DocumentService:
+    return DocumentService(session=session)

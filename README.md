@@ -15,14 +15,40 @@ This repository serves the Web app and can be consumed by a separate MCP reposit
 - Python package manager: `uv`
 - Web framework: `FastAPI`
 - ORM target: `SQLAlchemy 2.0`
+- Database target: `PostgreSQL`
 - Schema layer: `Pydantic`
 - Deployment target: Docker container
+
 ## Run
+
+Create a local env file first:
+
+```bash
+cp .env.example .env
+```
+
+Start PostgreSQL with Docker Compose:
+
+```bash
+docker compose up -d
+```
 
 Install dependencies:
 
 ```bash
 uv sync
+```
+
+Set the database URL:
+
+```bash
+export DOCUMENT_AGENT_API_DATABASE_URL='postgresql+psycopg://postgres:postgres@127.0.0.1:5432/document_agent_api'
+```
+
+Apply database migrations:
+
+```bash
+uv run alembic upgrade head
 ```
 
 Start the development server:
@@ -43,13 +69,45 @@ Health check:
 curl http://127.0.0.1:8000/healthz
 ```
 
+## Quality Checks
+
+```bash
+uv run ruff check src tests
+uv run pyright
+uv run pytest
+```
+
+If you want to run the DB-backed test suite against the Compose database:
+
+```bash
+export DOCUMENT_AGENT_API_TEST_DATABASE_URL='postgresql+psycopg://postgres:postgres@127.0.0.1:5432/document_agent_api_test'
+uv run pytest
+```
+
 ## Project Layout
 
 ```text
 document-agent-api/
+  docker/
+    postgres/
+      init/
+  docker-compose.yml
+  migrations/
+    versions/
   src/
-    __init__.py
+    config.py
+    database.py
     main.py
+    documents/
+      router.py
+      schemas.py
+      service.py
+      dependencies.py
+      models.py
+  tests/
+    documents/
+  .env.example
   pyproject.toml
+  alembic.ini
   uv.lock
 ```

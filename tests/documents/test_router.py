@@ -3,15 +3,20 @@ from collections.abc import Generator
 import pytest
 from fastapi.testclient import TestClient
 
-from src.documents.dependencies import get_document_service
+from src.database import get_db_session
+from src.documents.models import DocumentModel
 from src.documents.service import DocumentService
 from src.main import app
 
 
 @pytest.fixture
-def client() -> Generator[TestClient, None, None]:
-    service = DocumentService.seeded()
-    app.dependency_overrides[get_document_service] = lambda: service
+def client(db_session) -> Generator[TestClient, None, None]:
+    DocumentService(session=db_session).create_document(
+        filename="sample.pdf",
+        content_type="application/pdf",
+        file_data=b"seeded-bytes",
+    )
+    app.dependency_overrides[get_db_session] = lambda: db_session
     with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
     app.dependency_overrides.clear()
@@ -27,6 +32,7 @@ def test_list_documents_returns_seeded_item(client: TestClient) -> None:
 
 
 def test_create_document_returns_mock_result(client: TestClient) -> None:
+    db_session = app.dependency_overrides[get_db_session]()
     response = client.post(
         "/api/v1/documents",
         files={"file": ("demo.pdf", b"%PDF-mock", "application/pdf")},
@@ -36,6 +42,10 @@ def test_create_document_returns_mock_result(client: TestClient) -> None:
     body = response.json()
     assert body["document"]["filename"] == "demo.pdf"
     assert "canonicalJson" in body["result"]
+
+    stored = db_session.get(DocumentModel, body["document"]["id"])
+    assert stored is not None
+    assert stored.file_data == b"%PDF-mock"
 
 
 def test_create_document_rejects_unsupported_type(client: TestClient) -> None:

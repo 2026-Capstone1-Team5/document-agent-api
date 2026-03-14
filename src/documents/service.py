@@ -1,9 +1,11 @@
-from dataclasses import dataclass
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid4
 
+from sqlalchemy import func, select
+from sqlalchemy.orm import Session, joinedload, load_only
+
 from src.documents.exceptions import DocumentNotFoundError
+from src.documents.models import DocumentModel, DocumentResultModel
 from src.documents.schemas import (
     DocumentListResponse,
     DocumentParseResponse,
@@ -13,58 +15,9 @@ from src.documents.schemas import (
 )
 
 
-@dataclass(slots=True)
-class _StoredDocument:
-    document: DocumentSummary
-    result: ParseResult
-
-
 class DocumentService:
-    def __init__(self, *, items: list[_StoredDocument] | None = None) -> None:
-        self._items: dict[UUID, _StoredDocument] = {
-            item.document.id: item for item in (items or [])
-        }
-
-    @classmethod
-    def seeded(cls) -> "DocumentService":
-        created_at = datetime.now(UTC)
-        return cls(
-            items=[
-                _StoredDocument(
-                    document=DocumentSummary(
-                        id=uuid4(),
-                        filename="sample.pdf",
-                        contentType="application/pdf",
-                        createdAt=created_at,
-                        updatedAt=created_at,
-                    ),
-                    result=ParseResult(
-                        markdown=(
-                            "# Sample Document\n\nThis is seeded mock data for the documents API.\n"
-                        ),
-                        canonicalJson={
-                            "document": {
-                                "title": "Sample Document",
-                                "sourceFilename": "sample.pdf",
-                            },
-                            "pages": [
-                                {
-                                    "pageNumber": 1,
-                                    "blocks": [
-                                        {
-                                            "type": "paragraph",
-                                            "text": (
-                                                "This is seeded mock data for the documents API."
-                                            ),
-                                        }
-                                    ],
-                                }
-                            ],
-                        },
-                    ),
-                )
-            ]
-        )
+    def __init__(self, *, session: Session) -> None:
+        self.session = session
 
     def list_documents(
         self,
@@ -73,63 +26,115 @@ class DocumentService:
         offset: int,
         filename: str | None,
     ) -> DocumentListResponse:
-        items = sorted(
-            self._items.values(),
-            key=lambda item: item.document.created_at,
-            reverse=True,
+        statement = (
+            select(DocumentModel)
+            .options(
+                load_only(
+                    DocumentModel.id,
+                    DocumentModel.filename,
+                    DocumentModel.content_type,
+                    DocumentModel.created_at,
+                    DocumentModel.updated_at,
+                )
+            )
+            .order_by(DocumentModel.created_at.desc())
         )
+        count_statement = select(func.count()).select_from(DocumentModel)
+
         if filename:
-            lowered = filename.lower()
-            items = [item for item in items if lowered in item.document.filename.lower()]
-        total = len(items)
-        paged_items = items[offset : offset + limit]
+            pattern = f"%{filename}%"
+            statement = statement.where(DocumentModel.filename.ilike(pattern))
+            count_statement = count_statement.where(DocumentModel.filename.ilike(pattern))
+
+        items = self.session.scalars(statement.offset(offset).limit(limit)).all()
+        total = self.session.scalar(count_statement) or 0
+
         return DocumentListResponse(
-            items=[item.document for item in paged_items],
+            items=[self._to_document_summary(item) for item in items],
             total=total,
             limit=limit,
             offset=offset,
         )
 
     def get_document(self, document_id: UUID) -> DocumentResponse:
-        item = self._items.get(document_id)
-        if item is None:
+        statement = (
+            select(DocumentModel)
+            .options(
+                load_only(
+                    DocumentModel.id,
+                    DocumentModel.filename,
+                    DocumentModel.content_type,
+                    DocumentModel.created_at,
+                    DocumentModel.updated_at,
+                )
+            )
+            .where(DocumentModel.id == str(document_id))
+        )
+        document = self.session.scalars(statement).first()
+        if document is None:
             raise DocumentNotFoundError(document_id)
-        return DocumentResponse(document=item.document)
+        return DocumentResponse(document=self._to_document_summary(document))
 
     def get_document_result(self, document_id: UUID) -> DocumentParseResponse:
-        item = self._items.get(document_id)
-        if item is None:
+        statement = (
+            select(DocumentModel)
+            .options(
+                load_only(
+                    DocumentModel.id,
+                    DocumentModel.filename,
+                    DocumentModel.content_type,
+                    DocumentModel.created_at,
+                    DocumentModel.updated_at,
+                ),
+                joinedload(DocumentModel.result).load_only(
+                    DocumentResultModel.document_id,
+                    DocumentResultModel.markdown,
+                    DocumentResultModel.canonical_json,
+                ),
+            )
+            .where(DocumentModel.id == str(document_id))
+        )
+        document = self.session.scalars(statement).first()
+        if document is None or document.result is None:
             raise DocumentNotFoundError(document_id)
-        return DocumentParseResponse(document=item.document, result=item.result)
+        return self._to_document_parse_response(document)
 
     def create_document(
         self,
         *,
         filename: str,
         content_type: str,
+        file_data: bytes,
     ) -> DocumentParseResponse:
-        created_at = datetime.now(UTC)
+        document_id = str(uuid4())
         title = Path(filename).stem.replace("_", " ").replace("-", " ").strip() or "Mock Document"
-        item = _StoredDocument(
-            document=DocumentSummary(
-                id=uuid4(),
-                filename=filename,
-                contentType=content_type,
-                createdAt=created_at,
-                updatedAt=created_at,
-            ),
-            result=ParseResult(
-                markdown=self._build_markdown(title=title, filename=filename),
-                canonicalJson=self._build_canonical_json(title=title, filename=filename),
-            ),
+
+        document = DocumentModel(
+            id=document_id,
+            filename=filename,
+            content_type=content_type,
+            file_data=file_data,
         )
-        self._items[item.document.id] = item
-        return DocumentParseResponse(document=item.document, result=item.result)
+        document.result = DocumentResultModel(
+            document_id=document_id,
+            markdown=self._build_markdown(title=title, filename=filename),
+            canonical_json=self._build_canonical_json(title=title, filename=filename),
+        )
+
+        self.session.add(document)
+        self.session.commit()
+        self.session.refresh(document)
+        self.session.refresh(document, attribute_names=["result"])
+
+        return self._to_document_parse_response(document)
 
     def delete_document(self, document_id: UUID) -> None:
-        deleted = self._items.pop(document_id, None)
-        if deleted is None:
+        document = self.session.get(DocumentModel, str(document_id))
+        if document is None:
             raise DocumentNotFoundError(document_id)
+
+        self.session.delete(document)
+        self.session.commit()
 
     @staticmethod
     def _build_markdown(*, title: str, filename: str) -> str:
@@ -163,3 +168,25 @@ class DocumentService:
                 }
             ],
         }
+
+    @staticmethod
+    def _to_document_summary(document: DocumentModel) -> DocumentSummary:
+        return DocumentSummary(
+            id=UUID(document.id),
+            filename=document.filename,
+            contentType=document.content_type,
+            createdAt=document.created_at,
+            updatedAt=document.updated_at,
+        )
+
+    def _to_document_parse_response(self, document: DocumentModel) -> DocumentParseResponse:
+        if document.result is None:
+            raise DocumentNotFoundError(UUID(document.id))
+
+        return DocumentParseResponse(
+            document=self._to_document_summary(document),
+            result=ParseResult(
+                markdown=document.result.markdown,
+                canonicalJson=document.result.canonical_json,
+            ),
+        )
