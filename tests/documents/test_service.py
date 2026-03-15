@@ -135,3 +135,39 @@ def test_list_documents_only_returns_owner_items(db_session, object_storage) -> 
 
     assert result.total == 1
     assert result.items[0].filename == "owner.pdf"
+
+
+def test_create_document_rolls_back_storage_on_write_failure(db_session) -> None:
+    class FailingStorage:
+        def __init__(self) -> None:
+            self.objects: dict[str, bytes] = {}
+            self.put_count = 0
+
+        def put_bytes(self, *, key: str, data: bytes, content_type: str) -> str:
+            del content_type
+            self.put_count += 1
+            if self.put_count == 3:
+                raise RuntimeError("failed to write canonical json")
+            self.objects[key] = data
+            return key
+
+        def get_bytes(self, *, key: str) -> bytes:
+            return self.objects[key]
+
+        def delete_object(self, *, key: str) -> None:
+            self.objects.pop(key, None)
+
+    storage = FailingStorage()
+    service = DocumentService(session=db_session, storage=storage)
+    owner_user_id = _create_user(db_session)
+
+    with pytest.raises(RuntimeError, match="failed to write canonical json"):
+        service.create_document(
+            owner_user_id=owner_user_id,
+            filename="rollback.pdf",
+            content_type="application/pdf",
+            file_data=b"rollback-bytes",
+        )
+
+    assert db_session.query(DocumentModel).count() == 0
+    assert storage.objects == {}

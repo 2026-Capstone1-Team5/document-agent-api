@@ -151,41 +151,51 @@ class DocumentService:
         canonical_json_object_key = f"documents/{document_id}/result/result.json"
         markdown_content = self._build_markdown(title=title, filename=filename)
         canonical_json_content = self._build_canonical_json(title=title, filename=filename)
+        uploaded_keys: list[str] = []
 
-        self.storage.put_bytes(
-            key=source_object_key,
-            data=file_data,
-            content_type=content_type,
-        )
-        self.storage.put_bytes(
-            key=markdown_object_key,
-            data=markdown_content.encode("utf-8"),
-            content_type="text/markdown",
-        )
-        self.storage.put_bytes(
-            key=canonical_json_object_key,
-            data=json.dumps(canonical_json_content, ensure_ascii=False).encode("utf-8"),
-            content_type="application/json",
-        )
+        try:
+            self.storage.put_bytes(
+                key=source_object_key,
+                data=file_data,
+                content_type=content_type,
+            )
+            uploaded_keys.append(source_object_key)
+            self.storage.put_bytes(
+                key=markdown_object_key,
+                data=markdown_content.encode("utf-8"),
+                content_type="text/markdown",
+            )
+            uploaded_keys.append(markdown_object_key)
+            self.storage.put_bytes(
+                key=canonical_json_object_key,
+                data=json.dumps(canonical_json_content, ensure_ascii=False).encode("utf-8"),
+                content_type="application/json",
+            )
+            uploaded_keys.append(canonical_json_object_key)
 
-        document = DocumentModel(
-            id=document_id,
-            owner_user_id=owner_user_id,
-            source_object_key=source_object_key,
-            filename=filename,
-            content_type=content_type,
-            file_data=None,
-        )
-        document.result = DocumentResultModel(
-            document_id=document_id,
-            markdown=None,
-            canonical_json=None,
-            markdown_object_key=markdown_object_key,
-            canonical_json_object_key=canonical_json_object_key,
-        )
+            document = DocumentModel(
+                id=document_id,
+                owner_user_id=owner_user_id,
+                source_object_key=source_object_key,
+                filename=filename,
+                content_type=content_type,
+                file_data=None,
+            )
+            document.result = DocumentResultModel(
+                document_id=document_id,
+                markdown=None,
+                canonical_json=None,
+                markdown_object_key=markdown_object_key,
+                canonical_json_object_key=canonical_json_object_key,
+            )
 
-        self.session.add(document)
-        self.session.commit()
+            self.session.add(document)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            self._delete_objects_best_effort(uploaded_keys)
+            raise
+
         self.session.refresh(document)
         self.session.refresh(document, attribute_names=["result"])
 
@@ -301,6 +311,14 @@ class DocumentService:
             if document.result.canonical_json_object_key:
                 keys.append(document.result.canonical_json_object_key)
         return keys
+
+    def _delete_objects_best_effort(self, keys: list[str]) -> None:
+        for key in keys:
+            try:
+                self.storage.delete_object(key=key)
+            except Exception:
+                # Cleanup failures should not mask the original create failure.
+                continue
 
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
