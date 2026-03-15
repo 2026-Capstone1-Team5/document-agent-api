@@ -107,6 +107,29 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         return normalized
 
+    @field_validator(
+        "storage_bucket",
+        "storage_r2_endpoint",
+        "storage_r2_access_key_id",
+        "storage_r2_secret_access_key",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_storage_string(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("storage_r2_region")
+    @classmethod
+    def validate_storage_r2_region(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "storage_r2_region must not be empty"
+            raise ValueError(msg)
+        return normalized
+
     @model_validator(mode="after")
     def validate_storage_requirements(self) -> "Settings":
         if self.storage_backend == "r2":
