@@ -56,6 +56,13 @@ export CORS_ALLOW_ORIGINS='https://document-agent-web.vercel.app'
 
 You can provide multiple origins with a comma-separated string.
 
+Set required auth token configuration:
+
+```bash
+export AUTH_SECRET_KEY='replace-with-random-secret'
+export AUTH_ACCESS_TOKEN_TTL_SECONDS=1800
+```
+
 Apply database migrations:
 
 ```bash
@@ -78,6 +85,18 @@ Health check:
 
 ```bash
 curl http://127.0.0.1:8000/healthz
+```
+
+Auth examples:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"user@example.com","password":"password123!"}'
+
+curl -X POST http://127.0.0.1:8000/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"email":"user@example.com","password":"password123!"}'
 ```
 
 ## Quality Checks

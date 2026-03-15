@@ -3,6 +3,8 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from src.auth.dependencies import get_current_user
+from src.auth.models import UserModel
 from src.common.errors import ApiError
 from src.documents.dependencies import get_document_service
 from src.documents.exceptions import DocumentNotFoundError
@@ -19,6 +21,7 @@ router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 @router.post("", response_model=DocumentParseResponse, status_code=201)
 async def create_document(
     file: UploadFile = File(...),
+    current_user: UserModel = Depends(get_current_user),
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentParseResponse:
     filename = file.filename or ""
@@ -46,6 +49,7 @@ async def create_document(
         )
 
     return service.create_document(
+        owner_user_id=current_user.id,
         filename=filename,
         content_type=file.content_type or "application/octet-stream",
         file_data=file_bytes,
@@ -57,18 +61,25 @@ def list_documents(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     filename: str | None = Query(default=None),
+    current_user: UserModel = Depends(get_current_user),
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentListResponse:
-    return service.list_documents(limit=limit, offset=offset, filename=filename)
+    return service.list_documents(
+        limit=limit,
+        offset=offset,
+        filename=filename,
+        owner_user_id=current_user.id,
+    )
 
 
 @router.get("/{document_id}", response_model=DocumentResponse)
 def get_document(
     document_id: UUID,
+    current_user: UserModel = Depends(get_current_user),
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentResponse:
     try:
-        return service.get_document(document_id)
+        return service.get_document(document_id, owner_user_id=current_user.id)
     except DocumentNotFoundError as exc:
         raise ApiError(
             status_code=404,
@@ -80,10 +91,11 @@ def get_document(
 @router.get("/{document_id}/result", response_model=DocumentParseResponse)
 def get_document_result(
     document_id: UUID,
+    current_user: UserModel = Depends(get_current_user),
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentParseResponse:
     try:
-        return service.get_document_result(document_id)
+        return service.get_document_result(document_id, owner_user_id=current_user.id)
     except DocumentNotFoundError as exc:
         raise ApiError(
             status_code=404,
@@ -96,10 +108,11 @@ def get_document_result(
 def download_document_result(
     document_id: UUID,
     format: str = Query(...),
+    current_user: UserModel = Depends(get_current_user),
     service: DocumentService = Depends(get_document_service),
 ) -> Response:
     try:
-        result = service.get_document_result(document_id)
+        result = service.get_document_result(document_id, owner_user_id=current_user.id)
     except DocumentNotFoundError as exc:
         raise ApiError(
             status_code=404,
@@ -131,10 +144,11 @@ def download_document_result(
 @router.delete("/{document_id}", status_code=204)
 def delete_document(
     document_id: UUID,
+    current_user: UserModel = Depends(get_current_user),
     service: DocumentService = Depends(get_document_service),
 ) -> Response:
     try:
-        service.delete_document(document_id)
+        service.delete_document(document_id, owner_user_id=current_user.id)
     except DocumentNotFoundError as exc:
         raise ApiError(
             status_code=404,

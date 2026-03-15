@@ -3,6 +3,8 @@ from collections.abc import Generator
 import pytest
 from fastapi.testclient import TestClient
 
+from src.auth.service import AuthService
+from src.config import get_settings
 from src.database import get_db_session
 from src.documents.models import DocumentModel
 from src.documents.service import DocumentService
@@ -11,13 +13,27 @@ from src.main import app
 
 @pytest.fixture
 def client(db_session) -> Generator[TestClient, None, None]:
+    settings = get_settings()
+    auth_service = AuthService(
+        session=db_session,
+        secret_key=settings.auth_secret_key,
+        access_token_ttl_seconds=settings.auth_access_token_ttl_seconds,
+    )
+    auth_payload = auth_service.register(
+        email="owner@example.com",
+        password="password123!",
+    )
+
     DocumentService(session=db_session).create_document(
+        owner_user_id=str(auth_payload.user.id),
         filename="sample.pdf",
         content_type="application/pdf",
         file_data=b"seeded-bytes",
     )
+
     app.dependency_overrides[get_db_session] = lambda: db_session
     with TestClient(app, raise_server_exceptions=False) as test_client:
+        test_client.headers.update({"Authorization": f"Bearer {auth_payload.access_token}"})
         yield test_client
     app.dependency_overrides.clear()
 
@@ -89,3 +105,13 @@ def test_unknown_document_returns_structured_404(client: TestClient) -> None:
 
     assert response.status_code == 404
     assert response.json()["error"]["code"] == "document_not_found"
+
+
+def test_documents_requires_auth_header(db_session) -> None:
+    app.dependency_overrides[get_db_session] = lambda: db_session
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        response = test_client.get("/api/v1/documents")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "unauthorized"

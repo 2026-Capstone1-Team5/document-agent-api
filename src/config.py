@@ -7,6 +7,7 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/document_agent_api"
 DEFAULT_CORS_ALLOW_ORIGINS = ["https://document-agent-web.vercel.app"]
+DEFAULT_AUTH_ACCESS_TOKEN_TTL_SECONDS = 1800
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -57,6 +58,8 @@ class Settings(BaseSettings):
     cors_allow_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: DEFAULT_CORS_ALLOW_ORIGINS.copy(),
     )
+    auth_secret_key: str
+    auth_access_token_ttl_seconds: int = DEFAULT_AUTH_ACCESS_TOKEN_TTL_SECONDS
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -68,7 +71,24 @@ class Settings(BaseSettings):
     def validate_cors_allow_origins(cls, value: str | list[str]) -> list[str]:
         return normalize_cors_allow_origins(value)
 
+    @field_validator("auth_secret_key")
+    @classmethod
+    def validate_auth_secret_key(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "auth_secret_key must not be empty"
+            raise ValueError(msg)
+        return normalized
+
+    @field_validator("auth_access_token_ttl_seconds")
+    @classmethod
+    def validate_auth_access_token_ttl_seconds(cls, value: int) -> int:
+        if value <= 0:
+            msg = "auth_access_token_ttl_seconds must be greater than 0"
+            raise ValueError(msg)
+        return value
+
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings()  # pyright: ignore[reportCallIssue]
