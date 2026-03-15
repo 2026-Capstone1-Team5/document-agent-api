@@ -2,7 +2,7 @@
 
 ## Overview
 
-- Current persistence uses three tables:
+- Current persistence uses four tables:
   - `users`
   - `user_api_keys`
   - `documents`
