@@ -204,3 +204,20 @@ def test_delete_document_is_best_effort_when_storage_delete_fails(db_session) ->
 
     with pytest.raises(DocumentNotFoundError):
         service.get_document(created.document.id, owner_user_id=owner_user_id)
+
+
+def test_get_document_result_reads_payload_from_object_storage(db_session, object_storage) -> None:
+    service = DocumentService(session=db_session, storage=object_storage)
+    owner_user_id = _create_user(db_session)
+    created = service.create_document(
+        owner_user_id=owner_user_id,
+        filename="result.pdf",
+        content_type="application/pdf",
+        file_data=b"result-bytes",
+    )
+
+    result = service.get_document_result(created.document.id, owner_user_id=owner_user_id)
+
+    assert result.document.id == created.document.id
+    assert "result" in result.result.markdown.lower()
+    assert result.result.canonical_json["document"]["sourceFilename"] == "result.pdf"
