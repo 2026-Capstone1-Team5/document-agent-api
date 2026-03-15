@@ -27,6 +27,9 @@
 - Headers:
   - `X-API-Key: <api-key>`
   - or `Authorization: Bearer <api-key>`
+- If both `Authorization` and `X-API-Key` are present:
+  - a bearer JWT is used in preference to `X-API-Key`
+  - conflicting API key values are rejected as unauthorized
 - Used by:
   - all document endpoints
 - Not accepted by:

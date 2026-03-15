@@ -54,31 +54,36 @@ def get_current_document_user(
     __: str | None = Security(api_key_scheme),
     service: AuthService = Depends(get_auth_service),
 ) -> UserModel:
+    credential = _extract_bearer_credential(request)
     api_key = _extract_api_key(request)
+
+    if credential is not None:
+        if is_probable_api_key(credential):
+            if api_key is not None and api_key != credential:
+                raise _unauthorized_error(
+                    message="Conflicting authentication credentials were provided.",
+                )
+            return _authenticate_api_key(api_key=credential, service=service)
+
+        try:
+            return service.get_user_from_access_token(credential)
+        except ExpiredAccessTokenError as exc:
+            raise ApiError(
+                status_code=401,
+                code="access_token_expired",
+                message="Access token has expired.",
+            ) from exc
+        except InvalidAccessTokenError as exc:
+            raise ApiError(
+                status_code=401,
+                code="invalid_access_token",
+                message="Invalid access token.",
+            ) from exc
+
     if api_key is not None:
         return _authenticate_api_key(api_key=api_key, service=service)
 
-    credential = _extract_bearer_credential(request)
-    if credential is None:
-        raise _unauthorized_error()
-
-    if is_probable_api_key(credential):
-        return _authenticate_api_key(api_key=credential, service=service)
-
-    try:
-        return service.get_user_from_access_token(credential)
-    except ExpiredAccessTokenError as exc:
-        raise ApiError(
-            status_code=401,
-            code="access_token_expired",
-            message="Access token has expired.",
-        ) from exc
-    except InvalidAccessTokenError as exc:
-        raise ApiError(
-            status_code=401,
-            code="invalid_access_token",
-            message="Invalid access token.",
-        ) from exc
+    raise _unauthorized_error()
 
 
 def _authenticate_api_key(*, api_key: str, service: AuthService) -> UserModel:
@@ -118,9 +123,9 @@ def _extract_bearer_credential(request: Request) -> str | None:
     return normalized
 
 
-def _unauthorized_error() -> ApiError:
+def _unauthorized_error(*, message: str = "Authentication is required.") -> ApiError:
     return ApiError(
         status_code=401,
         code="unauthorized",
-        message="Authentication is required.",
+        message=message,
     )
