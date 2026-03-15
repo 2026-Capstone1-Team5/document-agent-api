@@ -173,7 +173,7 @@ def test_create_document_rolls_back_storage_on_write_failure(db_session) -> None
     assert storage.objects == {}
 
 
-def test_delete_document_is_best_effort_when_storage_delete_fails(db_session) -> None:
+def test_delete_document_fails_when_storage_delete_fails(db_session) -> None:
     class DeleteFailingStorage:
         def __init__(self) -> None:
             self.objects: dict[str, bytes] = {}
@@ -199,11 +199,12 @@ def test_delete_document_is_best_effort_when_storage_delete_fails(db_session) ->
         file_data=b"delete-failure",
     )
 
-    # Storage errors during cleanup should not break the API-level delete flow.
-    service.delete_document(created.document.id, owner_user_id=owner_user_id)
+    with pytest.raises(RuntimeError, match="failed to delete"):
+        service.delete_document(created.document.id, owner_user_id=owner_user_id)
 
-    with pytest.raises(DocumentNotFoundError):
-        service.get_document(created.document.id, owner_user_id=owner_user_id)
+    # DB row must remain when blob deletion fails.
+    remaining = service.get_document(created.document.id, owner_user_id=owner_user_id)
+    assert remaining.document.id == created.document.id
 
 
 def test_get_document_result_reads_payload_from_object_storage(db_session, object_storage) -> None:

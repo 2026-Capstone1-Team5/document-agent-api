@@ -219,9 +219,9 @@ class DocumentService:
 
         object_keys = self._collect_object_keys(document)
 
+        self._delete_objects_strict(object_keys)
         self.session.delete(document)
         self.session.commit()
-        self._delete_objects_best_effort(object_keys, retries=3)
 
     @staticmethod
     def _build_markdown(*, title: str, filename: str) -> str:
@@ -327,6 +327,10 @@ class DocumentService:
                             key,
                             exc_info=exc,
                         )
+
+    def _delete_objects_strict(self, keys: list[str]) -> None:
+        for key in keys:
+            self.storage.delete_object(key=key)
 
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
