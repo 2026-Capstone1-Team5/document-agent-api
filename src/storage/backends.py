@@ -17,8 +17,9 @@ class ObjectStorage(Protocol):
 
 class LocalObjectStorage:
     def __init__(self, *, root: str) -> None:
-        self.root = Path(root)
+        self.root = Path(root).expanduser()
         self.root.mkdir(parents=True, exist_ok=True)
+        self.root = self.root.resolve()
 
     def put_bytes(self, *, key: str, data: bytes, content_type: str) -> str:
         del content_type
@@ -38,7 +39,17 @@ class LocalObjectStorage:
 
     def _resolve_path(self, key: str) -> Path:
         normalized_key = key.strip().lstrip("/")
-        return self.root / normalized_key
+        if not normalized_key:
+            msg = "object key must not be empty"
+            raise ValueError(msg)
+
+        resolved_path = (self.root / normalized_key).resolve()
+        try:
+            resolved_path.relative_to(self.root)
+        except ValueError as exc:
+            msg = "object key escapes storage root"
+            raise ValueError(msg) from exc
+        return resolved_path
 
 
 class R2ObjectStorage:
