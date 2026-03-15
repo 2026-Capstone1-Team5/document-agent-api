@@ -118,7 +118,6 @@
 
 ## Out Of Scope
 
-- 복수 API key 관리
 - API key별 권한 범위
 - API key 마지막 사용 시각 저장
 - 조직/워크스페이스 단위 key
