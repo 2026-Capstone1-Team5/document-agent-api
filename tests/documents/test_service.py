@@ -208,6 +208,46 @@ def test_delete_document_fails_when_storage_delete_fails(db_session) -> None:
     assert remaining.document.id == created.document.id
 
 
+def test_delete_document_partial_blob_failure_does_not_corrupt_document(db_session) -> None:
+    class PartialDeleteFailingStorage:
+        def __init__(self) -> None:
+            self.objects: dict[str, bytes] = {}
+            self.delete_calls = 0
+
+        def put_bytes(self, *, key: str, data: bytes, content_type: str) -> str:
+            del content_type
+            self.objects[key] = data
+            return key
+
+        def get_bytes(self, *, key: str) -> bytes:
+            return self.objects[key]
+
+        def delete_object(self, *, key: str) -> None:
+            self.delete_calls += 1
+            if self.delete_calls == 3:
+                raise RuntimeError(f"failed to delete {key}")
+            self.objects.pop(key, None)
+
+    storage = PartialDeleteFailingStorage()
+    service = DocumentService(session=db_session, storage=storage)
+    owner_user_id = _create_user(db_session)
+    created = service.create_document(
+        owner_user_id=owner_user_id,
+        filename="partial-delete.pdf",
+        content_type="application/pdf",
+        file_data=b"partial-delete",
+    )
+
+    with pytest.raises(RuntimeError, match="failed to delete"):
+        service.delete_document(created.document.id, owner_user_id=owner_user_id)
+
+    # Document and parse payload should still be readable after rollback.
+    remaining = service.get_document(created.document.id, owner_user_id=owner_user_id)
+    assert remaining.document.id == created.document.id
+    result = service.get_document_result(created.document.id, owner_user_id=owner_user_id)
+    assert result.result.canonical_json["document"]["sourceFilename"] == "partial-delete.pdf"
+
+
 def test_get_document_result_reads_payload_from_object_storage(db_session, object_storage) -> None:
     service = DocumentService(session=db_session, storage=object_storage)
     owner_user_id = _create_user(db_session)

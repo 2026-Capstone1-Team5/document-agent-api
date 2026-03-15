@@ -329,8 +329,62 @@ class DocumentService:
                         )
 
     def _delete_objects_strict(self, keys: list[str]) -> None:
+        backup_payloads: dict[str, bytes] = {}
         for key in keys:
-            self.storage.delete_object(key=key)
+            backup_payloads[key] = self.storage.get_bytes(key=key)
+
+        deleted_keys: list[str] = []
+        try:
+            for key in keys:
+                self.storage.delete_object(key=key)
+                deleted_keys.append(key)
+        except Exception as exc:
+            restore_failed_keys = self._restore_objects_best_effort(
+                deleted_keys,
+                backup_payloads,
+            )
+            if restore_failed_keys:
+                logger.error(
+                    "strict delete rollback failed for keys=%s",
+                    ",".join(restore_failed_keys),
+                )
+                msg = "storage delete failed and object rollback also failed"
+                raise RuntimeError(msg) from exc
+            raise
+
+    def _restore_objects_best_effort(
+        self,
+        keys: list[str],
+        backup_payloads: dict[str, bytes],
+    ) -> list[str]:
+        failed: list[str] = []
+        for key in keys:
+            data = backup_payloads.get(key)
+            if data is None:
+                failed.append(key)
+                continue
+            try:
+                self.storage.put_bytes(
+                    key=key,
+                    data=data,
+                    content_type=self._content_type_for_key(key),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "best-effort storage rollback failed for key=%s",
+                    key,
+                    exc_info=exc,
+                )
+                failed.append(key)
+        return failed
+
+    @staticmethod
+    def _content_type_for_key(key: str) -> str:
+        if key.endswith(".md"):
+            return "text/markdown"
+        if key.endswith(".json"):
+            return "application/json"
+        return "application/octet-stream"
 
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
