@@ -8,6 +8,7 @@ from src.auth.security import hash_password
 from src.documents.exceptions import DocumentNotFoundError
 from src.documents.models import DocumentModel
 from src.documents.service import DocumentService
+from src.storage.backends import LocalObjectStorage
 
 
 def test_file_data_is_deferred_by_default() -> None:
@@ -222,3 +223,37 @@ def test_get_document_result_reads_payload_from_object_storage(db_session, objec
     assert result.document.id == created.document.id
     assert "result" in result.result.markdown.lower()
     assert result.result.canonical_json["document"]["sourceFilename"] == "result.pdf"
+
+
+@pytest.mark.parametrize(
+    ("filename", "expected"),
+    [
+        ("report.pdf", "report.pdf"),
+        ("../report.pdf", "report.pdf"),
+        ("dir\\report.pdf", "report.pdf"),
+        ("..", "uploaded.bin"),
+        (".", "uploaded.bin"),
+        ("folder/..", "uploaded.bin"),
+        ("", "uploaded.bin"),
+    ],
+)
+def test_sanitize_filename_neutralizes_path_components(filename: str, expected: str) -> None:
+    assert DocumentService._sanitize_filename(filename) == expected
+
+
+def test_create_document_with_dotdot_filename_uses_safe_key(db_session, tmp_path) -> None:
+    storage = LocalObjectStorage(root=str(tmp_path))
+    service = DocumentService(session=db_session, storage=storage)
+    owner_user_id = _create_user(db_session)
+
+    created = service.create_document(
+        owner_user_id=owner_user_id,
+        filename="..",
+        content_type="application/pdf",
+        file_data=b"dotdot-bytes",
+    )
+
+    stored = db_session.get(DocumentModel, str(created.document.id))
+    assert stored is not None
+    assert stored.source_object_key is not None
+    assert stored.source_object_key.endswith("/uploaded.bin")

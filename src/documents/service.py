@@ -334,4 +334,11 @@ class DocumentService:
 
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
-        return filename.strip().replace("/", "_").replace("\\", "_") or "uploaded.bin"
+        normalized = filename.strip().replace("\\", "/")
+        if not normalized:
+            return "uploaded.bin"
+
+        leaf = normalized.split("/")[-1].strip()
+        if not leaf or leaf in {".", ".."}:
+            return "uploaded.bin"
+        return leaf
