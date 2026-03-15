@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, String
+from sqlalchemy import DateTime, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database import Base, utcnow
@@ -36,6 +36,7 @@ class UserModel(Base):
 
 class UserApiKeyModel(Base):
     __tablename__ = "user_api_keys"
+    __table_args__ = (Index("ix_user_api_keys_user_id_name", "user_id", "name", unique=True),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[str] = mapped_column(
