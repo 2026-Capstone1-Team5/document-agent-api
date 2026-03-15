@@ -36,7 +36,10 @@ class UserModel(Base):
 
 class UserApiKeyModel(Base):
     __tablename__ = "user_api_keys"
-    __table_args__ = (Index("ix_user_api_keys_user_id_name", "user_id", "name", unique=True),)
+    __table_args__ = (
+        Index("ix_user_api_keys_user_id_name", "user_id", "name", unique=True),
+        Index("ix_user_api_keys_key_hash", "key_hash", unique=True),
+    )
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     user_id: Mapped[str] = mapped_column(
@@ -46,7 +49,7 @@ class UserApiKeyModel(Base):
         index=True,
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    key_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True, index=True)
+    key_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     key_prefix: Mapped[str] = mapped_column(String(32), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
