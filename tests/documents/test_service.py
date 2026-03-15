@@ -248,6 +248,29 @@ def test_delete_document_partial_blob_failure_does_not_corrupt_document(db_sessi
     assert result.result.canonical_json["document"]["sourceFilename"] == "partial-delete.pdf"
 
 
+def test_delete_document_allows_pre_missing_blob(db_session, object_storage) -> None:
+    service = DocumentService(session=db_session, storage=object_storage)
+    owner_user_id = _create_user(db_session)
+    created = service.create_document(
+        owner_user_id=owner_user_id,
+        filename="already-missing.pdf",
+        content_type="application/pdf",
+        file_data=b"already-missing",
+    )
+    stored = db_session.get(DocumentModel, str(created.document.id))
+    assert stored is not None
+    assert stored.result is not None
+
+    # Simulate previously-corrupted object storage state.
+    assert stored.result.markdown_object_key is not None
+    object_storage._objects.pop(stored.result.markdown_object_key, None)  # noqa: SLF001
+
+    service.delete_document(created.document.id, owner_user_id=owner_user_id)
+
+    with pytest.raises(DocumentNotFoundError):
+        service.get_document(created.document.id, owner_user_id=owner_user_id)
+
+
 def test_get_document_result_reads_payload_from_object_storage(db_session, object_storage) -> None:
     service = DocumentService(session=db_session, storage=object_storage)
     owner_user_id = _create_user(db_session)

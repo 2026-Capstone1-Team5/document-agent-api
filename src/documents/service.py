@@ -331,13 +331,23 @@ class DocumentService:
     def _delete_objects_strict(self, keys: list[str]) -> None:
         backup_payloads: dict[str, bytes] = {}
         for key in keys:
-            backup_payloads[key] = self.storage.get_bytes(key=key)
+            try:
+                backup_payloads[key] = self.storage.get_bytes(key=key)
+            except Exception as exc:
+                if self._is_missing_object_error(exc):
+                    continue
+                raise
 
         deleted_keys: list[str] = []
         try:
             for key in keys:
-                self.storage.delete_object(key=key)
-                deleted_keys.append(key)
+                try:
+                    self.storage.delete_object(key=key)
+                    deleted_keys.append(key)
+                except Exception as exc:
+                    if self._is_missing_object_error(exc):
+                        continue
+                    raise
         except Exception as exc:
             restore_failed_keys = self._restore_objects_best_effort(
                 deleted_keys,
@@ -385,6 +395,20 @@ class DocumentService:
         if key.endswith(".json"):
             return "application/json"
         return "application/octet-stream"
+
+    @staticmethod
+    def _is_missing_object_error(exc: Exception) -> bool:
+        if isinstance(exc, (FileNotFoundError, KeyError)):
+            return True
+
+        response = getattr(exc, "response", None)
+        if isinstance(response, dict):
+            error = response.get("Error")
+            if isinstance(error, dict):
+                code = str(error.get("Code", "")).lower()
+                if code in {"nosuchkey", "notfound", "404"}:
+                    return True
+        return False
 
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
