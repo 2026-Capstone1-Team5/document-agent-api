@@ -119,3 +119,50 @@ def test_documents_requires_auth_header(db_session, object_storage) -> None:
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "unauthorized"
+
+
+def test_documents_accept_x_api_key(client: TestClient) -> None:
+    issue_response = client.post(
+        "/api/v1/auth/api-keys",
+        json={"name": "MCP"},
+    )
+    assert issue_response.status_code == 201
+
+    with TestClient(app, raise_server_exceptions=False) as api_key_client:
+        response = api_key_client.get(
+            "/api/v1/documents",
+            headers={"X-API-Key": issue_response.json()["apiKey"]},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+
+
+def test_documents_accept_api_key_in_bearer_header(client: TestClient) -> None:
+    issue_response = client.post(
+        "/api/v1/auth/api-keys",
+        json={"name": "MCP"},
+    )
+    assert issue_response.status_code == 201
+
+    response = client.get(
+        "/api/v1/documents",
+        headers={"Authorization": f"Bearer {issue_response.json()['apiKey']}"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+
+
+def test_documents_reject_invalid_api_key(db_session, object_storage) -> None:
+    app.dependency_overrides[get_db_session] = lambda: db_session
+    app.dependency_overrides[get_object_storage] = lambda: object_storage
+    with TestClient(app, raise_server_exceptions=False) as test_client:
+        response = test_client.get(
+            "/api/v1/documents",
+            headers={"X-API-Key": "dagk_invalid"},
+        )
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "invalid_api_key"

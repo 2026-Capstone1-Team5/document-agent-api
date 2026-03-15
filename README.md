@@ -116,6 +116,26 @@ curl -X POST http://127.0.0.1:8000/api/v1/auth/login \
   -d '{"email":"user@example.com","password":"password123!"}'
 ```
 
+API key examples:
+
+```bash
+ACCESS_TOKEN='paste-jwt-access-token'
+
+curl -X POST http://127.0.0.1:8000/api/v1/auth/api-keys \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Claude Desktop"}'
+
+curl http://127.0.0.1:8000/api/v1/auth/api-keys \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}"
+
+curl http://127.0.0.1:8000/api/v1/documents \
+  -H 'X-API-Key: paste-issued-api-key'
+
+curl http://127.0.0.1:8000/api/v1/documents \
+  -H 'Authorization: Bearer paste-issued-api-key'
+```
+
 ## Quality Checks
 
 ```bash

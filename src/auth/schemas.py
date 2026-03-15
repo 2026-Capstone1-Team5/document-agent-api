@@ -34,3 +34,27 @@ class AuthTokenResponse(BaseSchema):
 
 class UserResponse(BaseSchema):
     user: UserProfile
+
+
+class CreateApiKeyRequest(BaseSchema):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class UpdateApiKeyRequest(BaseSchema):
+    name: str = Field(min_length=1, max_length=100)
+
+
+class ApiKeySummary(BaseSchema):
+    id: UUID
+    name: str
+    prefix: str
+    created_at: datetime = Field(alias="createdAt")
+
+
+class ApiKeyListResponse(BaseSchema):
+    items: list[ApiKeySummary]
+
+
+class ApiKeyResponse(BaseSchema):
+    api_key: str = Field(alias="apiKey")
+    key: ApiKeySummary
