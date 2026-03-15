@@ -2,6 +2,7 @@ import re
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.auth.exceptions import (
@@ -49,7 +50,13 @@ class AuthService:
             password_hash=hash_password(password),
         )
         self.session.add(user)
-        self.session.commit()
+        try:
+            self.session.commit()
+        except IntegrityError as exc:
+            self.session.rollback()
+            if _is_email_unique_violation(exc):
+                raise UserAlreadyExistsError(normalized_email) from exc
+            raise
         self.session.refresh(user)
 
         return self._build_auth_token_response(user)
@@ -105,3 +112,20 @@ def _normalize_email(email: str) -> str:
 
 def _is_valid_email(email: str) -> bool:
     return bool(EMAIL_PATTERN.fullmatch(email))
+
+
+def _is_email_unique_violation(exc: IntegrityError) -> bool:
+    orig_text = str(exc.orig).lower() if exc.orig is not None else ""
+    statement_text = str(exc.statement).lower() if exc.statement is not None else ""
+    message = f"{orig_text} {statement_text}"
+
+    return any(
+        token in message
+        for token in (
+            "ix_users_email",
+            "users.email",
+            "unique constraint",
+            "duplicate key value",
+            "unique violation",
+        )
+    )
