@@ -41,4 +41,3 @@
 - `src/main.py`
 - `src/auth/router.py`
 - `src/documents/router.py`
-- `docs/openapi.json`
