@@ -1,7 +1,9 @@
+import json
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/document_agent_api"
 DEFAULT_CORS_ALLOW_ORIGINS = ["https://document-agent-web.vercel.app"]
@@ -18,7 +20,20 @@ def normalize_database_url(database_url: str) -> str:
 
 def normalize_cors_allow_origins(origins: str | list[str]) -> list[str]:
     if isinstance(origins, str):
-        candidates = [item.strip() for item in origins.split(",")]
+        raw = origins.strip()
+        parsed_json: list[str] | None = None
+        if raw.startswith("["):
+            try:
+                json_value = json.loads(raw)
+                if isinstance(json_value, list):
+                    parsed_json = [str(item).strip() for item in json_value]
+            except json.JSONDecodeError:
+                parsed_json = None
+
+        if parsed_json is not None:
+            candidates = parsed_json
+        else:
+            candidates = [item.strip() for item in origins.split(",")]
     else:
         candidates = [item.strip() for item in origins]
 
@@ -39,7 +54,9 @@ class Settings(BaseSettings):
     )
 
     database_url: str = DEFAULT_DATABASE_URL
-    cors_allow_origins: list[str] = Field(default_factory=lambda: DEFAULT_CORS_ALLOW_ORIGINS.copy())
+    cors_allow_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: DEFAULT_CORS_ALLOW_ORIGINS.copy(),
+    )
 
     @field_validator("database_url", mode="before")
     @classmethod
