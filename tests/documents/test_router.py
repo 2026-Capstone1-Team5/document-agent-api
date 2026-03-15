@@ -128,10 +128,11 @@ def test_documents_accept_x_api_key(client: TestClient) -> None:
     )
     assert issue_response.status_code == 201
 
-    response = client.get(
-        "/api/v1/documents",
-        headers={"X-API-Key": issue_response.json()["apiKey"]},
-    )
+    with TestClient(app, raise_server_exceptions=False) as api_key_client:
+        response = api_key_client.get(
+            "/api/v1/documents",
+            headers={"X-API-Key": issue_response.json()["apiKey"]},
+        )
 
     assert response.status_code == 200
     assert response.json()["total"] == 1
