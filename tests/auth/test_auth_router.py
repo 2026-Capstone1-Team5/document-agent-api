@@ -138,7 +138,7 @@ def test_register_rejects_invalid_email_format(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "invalid_email_format"
 
 
-def test_api_key_status_requires_authentication(client: TestClient) -> None:
+def test_api_key_list_requires_authentication(client: TestClient) -> None:
     response = client.get("/api/v1/auth/api-keys")
 
     assert response.status_code == 401
