@@ -175,7 +175,9 @@ def test_create_document_rolls_back_storage_on_write_failure(db_session) -> None
     assert storage.objects == {}
 
 
-def test_create_document_raises_when_cleanup_after_failure_is_incomplete(db_session) -> None:
+def test_create_document_persists_fallback_when_cleanup_after_failure_is_incomplete(
+    db_session,
+) -> None:
     class CreateCleanupFailingStorage:
         def __init__(self) -> None:
             self.objects: dict[str, bytes] = {}
@@ -203,16 +205,130 @@ def test_create_document_raises_when_cleanup_after_failure_is_incomplete(db_sess
     service = DocumentService(session=db_session, storage=storage)
     owner_user_id = _create_user(db_session)
 
-    with pytest.raises(RuntimeError, match="object cleanup is incomplete"):
-        service.create_document(
-            owner_user_id=owner_user_id,
-            filename="cleanup-fail.pdf",
-            content_type="application/pdf",
-            file_data=b"cleanup-fail",
-        )
+    created = service.create_document(
+        owner_user_id=owner_user_id,
+        filename="cleanup-fail.pdf",
+        content_type="application/pdf",
+        file_data=b"cleanup-fail",
+    )
 
-    # Document row must not exist even when cleanup is incomplete.
-    assert db_session.query(DocumentModel).count() == 0
+    assert created.document.filename == "cleanup-fail.pdf"
+    assert db_session.query(DocumentModel).count() == 1
+    stored = db_session.get(DocumentModel, str(created.document.id))
+    assert stored is not None
+    assert stored.source_object_key in storage.objects
+    assert stored.file_data == b"cleanup-fail"
+    assert stored.result is not None
+    assert stored.result.markdown == created.result.markdown
+    assert stored.result.markdown_object_key is None
+
+
+def test_create_document_persists_fallback_when_commit_and_cleanup_fail(db_session) -> None:
+    class CommitFailOnceCleanupFailStorage:
+        def __init__(self) -> None:
+            self.objects: dict[str, bytes] = {}
+            self.delete_count = 0
+
+        def put_bytes(self, *, key: str, data: bytes, content_type: str) -> str:
+            del content_type
+            self.objects[key] = data
+            return key
+
+        def get_bytes(self, *, key: str) -> bytes:
+            return self.objects[key]
+
+        def delete_object(self, *, key: str) -> None:
+            self.delete_count += 1
+            if self.delete_count == 1:
+                raise RuntimeError("cleanup delete failed")
+            self.objects.pop(key, None)
+
+    class CommitFailingSession:
+        def __init__(self, wrapped_session) -> None:
+            self.wrapped_session = wrapped_session
+            self.fail_next_commit = True
+
+        def __getattr__(self, name: str) -> Any:
+            return getattr(self.wrapped_session, name)
+
+        def commit(self) -> None:
+            if self.fail_next_commit:
+                self.fail_next_commit = False
+                raise RuntimeError("forced commit failure")
+            self.wrapped_session.commit()
+
+        def rollback(self) -> None:
+            self.wrapped_session.rollback()
+
+    storage = CommitFailOnceCleanupFailStorage()
+    owner_user_id = _create_user(db_session)
+    service = DocumentService(
+        session=cast(Any, CommitFailingSession(db_session)),
+        storage=storage,
+    )
+
+    created = service.create_document(
+        owner_user_id=owner_user_id,
+        filename="commit-cleanup-fail.pdf",
+        content_type="application/pdf",
+        file_data=b"commit-cleanup-fail",
+    )
+
+    assert created.document.filename == "commit-cleanup-fail.pdf"
+    persisted = DocumentService(session=db_session, storage=storage).get_document_result(
+        created.document.id,
+        owner_user_id=owner_user_id,
+    )
+    assert (
+        persisted.result.canonical_json["document"]["sourceFilename"] == "commit-cleanup-fail.pdf"
+    )
+
+
+def test_get_document_result_uses_inline_fallback_when_object_backed_field_disappears(
+    db_session,
+) -> None:
+    class MarkdownCleanupFailingStorage:
+        def __init__(self) -> None:
+            self.objects: dict[str, bytes] = {}
+            self.put_count = 0
+            self.delete_count = 0
+
+        def put_bytes(self, *, key: str, data: bytes, content_type: str) -> str:
+            del content_type
+            self.put_count += 1
+            if self.put_count == 3:
+                raise RuntimeError("failed to write canonical json")
+            self.objects[key] = data
+            return key
+
+        def get_bytes(self, *, key: str) -> bytes:
+            return self.objects[key]
+
+        def delete_object(self, *, key: str) -> None:
+            self.delete_count += 1
+            if self.delete_count == 2:
+                raise RuntimeError("cleanup delete failed")
+            self.objects.pop(key, None)
+
+    storage = MarkdownCleanupFailingStorage()
+    service = DocumentService(session=db_session, storage=storage)
+    owner_user_id = _create_user(db_session)
+
+    created = service.create_document(
+        owner_user_id=owner_user_id,
+        filename="inline-fallback.pdf",
+        content_type="application/pdf",
+        file_data=b"inline-fallback",
+    )
+    stored = db_session.get(DocumentModel, str(created.document.id))
+    assert stored is not None
+    assert stored.result is not None
+    assert stored.result.markdown_object_key is not None
+
+    storage.objects.pop(stored.result.markdown_object_key, None)
+
+    persisted = service.get_document_result(created.document.id, owner_user_id=owner_user_id)
+    assert persisted.result.markdown == created.result.markdown
 
 
 def test_delete_document_fails_when_storage_delete_fails(db_session) -> None:

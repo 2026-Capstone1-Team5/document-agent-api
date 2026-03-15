@@ -201,6 +201,34 @@ class DocumentService:
                 retries=3,
             )
             if cleanup_failed_keys:
+                recovered_document = self._persist_document_after_incomplete_create_cleanup(
+                    document_id=document_id,
+                    owner_user_id=owner_user_id,
+                    filename=filename,
+                    content_type=content_type,
+                    file_data=file_data,
+                    markdown_content=markdown_content,
+                    canonical_json_content=canonical_json_content,
+                    source_object_key=source_object_key,
+                    markdown_object_key=markdown_object_key,
+                    canonical_json_object_key=canonical_json_object_key,
+                    remaining_object_keys=cleanup_failed_keys,
+                )
+                if recovered_document is not None:
+                    logger.warning(
+                        (
+                            "create cleanup was incomplete, persisted fallback "
+                            "document for document_id=%s keys=%s"
+                        ),
+                        document_id,
+                        ",".join(cleanup_failed_keys),
+                    )
+                    return self._to_document_parse_response(
+                        recovered_document,
+                        markdown=markdown_content,
+                        canonical_json=canonical_json_content,
+                    )
+
                 logger.error(
                     "create cleanup failed for document_id=%s keys=%s",
                     document_id,
@@ -314,20 +342,8 @@ class DocumentService:
         if document.result is None:
             raise DocumentNotFoundError(UUID(document.id))
 
-        markdown_object_key = document.result.markdown_object_key
-        canonical_json_object_key = document.result.canonical_json_object_key
-        if markdown_object_key and canonical_json_object_key:
-            markdown = self.storage.get_bytes(key=markdown_object_key).decode("utf-8")
-            canonical_json_raw = self.storage.get_bytes(
-                key=canonical_json_object_key,
-            ).decode("utf-8")
-            canonical_json = json.loads(canonical_json_raw)
-            if not isinstance(canonical_json, dict):
-                raise ValueError("canonical json payload must be a JSON object")
-            return markdown, canonical_json
-
-        markdown = document.result.markdown
-        canonical_json = document.result.canonical_json
+        markdown = self._load_markdown_payload(document.result)
+        canonical_json = self._load_canonical_json_payload(document.result)
         if markdown is None or canonical_json is None:
             raise DocumentNotFoundError(UUID(document.id))
         return markdown, canonical_json
@@ -362,6 +378,59 @@ class DocumentService:
             if not deleted:
                 failed.append(key)
         return failed
+
+    def _persist_document_after_incomplete_create_cleanup(
+        self,
+        *,
+        document_id: str,
+        owner_user_id: str,
+        filename: str,
+        content_type: str,
+        file_data: bytes,
+        markdown_content: str,
+        canonical_json_content: dict[str, Any],
+        source_object_key: str,
+        markdown_object_key: str,
+        canonical_json_object_key: str,
+        remaining_object_keys: list[str],
+    ) -> DocumentModel | None:
+        remaining_keys = set(remaining_object_keys)
+        document = DocumentModel(
+            id=document_id,
+            owner_user_id=owner_user_id,
+            source_object_key=source_object_key if source_object_key in remaining_keys else None,
+            filename=filename,
+            content_type=content_type,
+            file_data=file_data,
+        )
+        document.result = DocumentResultModel(
+            document_id=document_id,
+            markdown=markdown_content,
+            canonical_json=canonical_json_content,
+            markdown_object_key=markdown_object_key
+            if markdown_object_key in remaining_keys
+            else None,
+            canonical_json_object_key=(
+                canonical_json_object_key if canonical_json_object_key in remaining_keys else None
+            ),
+        )
+        self.session.add(document)
+        try:
+            self.session.commit()
+        except Exception as exc:
+            self.session.rollback()
+            logger.error(
+                (
+                    "failed to persist fallback document after incomplete "
+                    "create cleanup for document_id=%s"
+                ),
+                document_id,
+                exc_info=exc,
+            )
+            return None
+        self.session.refresh(document)
+        self.session.refresh(document, attribute_names=["result"])
+        return document
 
     def _delete_objects_strict(self, keys: list[str]) -> tuple[dict[str, bytes], list[str]]:
         backup_payloads: dict[str, bytes] = {}
@@ -423,6 +492,40 @@ class DocumentService:
                 )
                 failed.append(key)
         return failed
+
+    def _load_markdown_payload(self, result: DocumentResultModel) -> str | None:
+        if result.markdown_object_key:
+            try:
+                return self.storage.get_bytes(key=result.markdown_object_key).decode("utf-8")
+            except Exception as exc:
+                if result.markdown is None:
+                    raise
+                logger.warning(
+                    "failed to read markdown object key=%s, using inline fallback",
+                    result.markdown_object_key,
+                    exc_info=exc,
+                )
+        return result.markdown
+
+    def _load_canonical_json_payload(self, result: DocumentResultModel) -> dict[str, Any] | None:
+        if result.canonical_json_object_key:
+            try:
+                canonical_json_raw = self.storage.get_bytes(
+                    key=result.canonical_json_object_key,
+                ).decode("utf-8")
+                canonical_json = json.loads(canonical_json_raw)
+                if not isinstance(canonical_json, dict):
+                    raise ValueError("canonical json payload must be a JSON object")
+                return canonical_json
+            except Exception as exc:
+                if result.canonical_json is None:
+                    raise
+                logger.warning(
+                    "failed to read canonical json object key=%s, using inline fallback",
+                    result.canonical_json_object_key,
+                    exc_info=exc,
+                )
+        return result.canonical_json
 
     @staticmethod
     def _content_type_for_key(key: str) -> str:
