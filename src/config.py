@@ -7,7 +7,6 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/document_agent_api"
 DEFAULT_CORS_ALLOW_ORIGINS = ["https://document-agent-web.vercel.app"]
-DEFAULT_AUTH_SECRET_KEY = "dev-only-change-this-key"
 DEFAULT_AUTH_ACCESS_TOKEN_TTL_SECONDS = 1800
 
 
@@ -59,7 +58,7 @@ class Settings(BaseSettings):
     cors_allow_origins: Annotated[list[str], NoDecode] = Field(
         default_factory=lambda: DEFAULT_CORS_ALLOW_ORIGINS.copy(),
     )
-    auth_secret_key: str = DEFAULT_AUTH_SECRET_KEY
+    auth_secret_key: str
     auth_access_token_ttl_seconds: int = DEFAULT_AUTH_ACCESS_TOKEN_TTL_SECONDS
 
     @field_validator("database_url", mode="before")
@@ -92,4 +91,4 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings()  # pyright: ignore[reportCallIssue]

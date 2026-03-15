@@ -56,7 +56,7 @@ export CORS_ALLOW_ORIGINS='https://document-agent-web.vercel.app'
 
 You can provide multiple origins with a comma-separated string.
 
-Set auth token configuration:
+Set required auth token configuration:
 
 ```bash
 export AUTH_SECRET_KEY='replace-with-random-secret'
