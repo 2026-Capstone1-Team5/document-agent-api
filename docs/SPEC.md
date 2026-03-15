@@ -34,7 +34,6 @@
 
 - parser 알고리즘 구현
 - 큐/워커 기반 비동기 처리
-- 복수 API key 관리
 - API key 권한 스코프 관리
 
 ## Current Entry Points
