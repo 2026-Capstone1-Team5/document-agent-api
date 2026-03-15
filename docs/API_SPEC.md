@@ -18,6 +18,7 @@
   - `POST /auth/login`
   - `GET /auth/me`
   - `GET|POST /auth/api-keys`
+  - `PATCH /auth/api-keys/{api_key_id}`
   - `DELETE /auth/api-keys/{api_key_id}`
   - all document endpoints
 
@@ -31,6 +32,7 @@
 - Not accepted by:
   - `GET /auth/me`
   - `GET|POST /auth/api-keys`
+  - `PATCH /auth/api-keys/{api_key_id}`
   - `DELETE /auth/api-keys/{api_key_id}`
 
 ## Auth Endpoints
@@ -74,6 +76,17 @@
 
 - Revoke one API key owned by the current user.
 - Returns `204 No Content`.
+
+### `PATCH /auth/api-keys/{api_key_id}`
+
+- Rename one API key owned by the current user.
+- Request body fields:
+  - `name`
+- Response fields:
+  - `id`
+  - `name`
+  - `prefix`
+  - `createdAt`
 
 ## Document Endpoints
 

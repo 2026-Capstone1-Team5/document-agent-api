@@ -15,10 +15,12 @@ from src.auth.models import UserModel
 from src.auth.schemas import (
     ApiKeyListResponse,
     ApiKeyResponse,
+    ApiKeySummary,
     AuthTokenResponse,
     CreateApiKeyRequest,
     LoginRequest,
     RegisterRequest,
+    UpdateApiKeyRequest,
     UserResponse,
 )
 from src.auth.service import AuthService
@@ -121,3 +123,38 @@ def revoke_api_key(
         ) from exc
     else:
         return Response(status_code=204)
+
+
+@router.patch("/api-keys/{api_key_id}", response_model=ApiKeySummary)
+def rename_api_key(
+    api_key_id: UUID,
+    request: UpdateApiKeyRequest,
+    current_user: UserModel = Depends(get_current_user),
+    service: AuthService = Depends(get_auth_service),
+) -> ApiKeySummary:
+    try:
+        return service.rename_api_key(
+            user=current_user,
+            api_key_id=api_key_id,
+            request=request,
+        )
+    except InvalidApiKeyNameError as exc:
+        raise ApiError(
+            status_code=400,
+            code="invalid_api_key_name",
+            message="API key name must not be empty.",
+        ) from exc
+    except ApiKeyNameAlreadyExistsError as exc:
+        raise ApiError(
+            status_code=409,
+            code="api_key_name_already_exists",
+            message="API key name is already in use.",
+            details={"name": exc.name},
+        ) from exc
+    except ApiKeyNotFoundError as exc:
+        raise ApiError(
+            status_code=404,
+            code="api_key_not_found",
+            message="API key not found.",
+            details={"apiKeyId": exc.api_key_id},
+        ) from exc

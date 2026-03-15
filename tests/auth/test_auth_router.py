@@ -298,6 +298,90 @@ def test_revoke_api_key_removes_only_target_key(client: TestClient) -> None:
     }
 
 
+def test_rename_api_key_updates_name_in_list(client: TestClient) -> None:
+    registered = _register(
+        client,
+        email="rename@example.com",
+        password="password123!",
+    )
+
+    issue_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "Claude Desktop"},
+    )
+    assert issue_response.status_code == 201
+
+    rename_response = client.patch(
+        f"/api/v1/auth/api-keys/{issue_response.json()['key']['id']}",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "Claude Production"},
+    )
+
+    assert rename_response.status_code == 200
+    assert rename_response.json() == {
+        "id": issue_response.json()["key"]["id"],
+        "name": "Claude Production",
+        "prefix": issue_response.json()["key"]["prefix"],
+        "createdAt": issue_response.json()["key"]["createdAt"],
+    }
+
+    list_response = client.get(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+    )
+
+    assert list_response.status_code == 200
+    assert list_response.json()["items"][0]["name"] == "Claude Production"
+
+
+def test_rename_api_key_rejects_duplicate_name(client: TestClient) -> None:
+    registered = _register(
+        client,
+        email="rename-duplicate@example.com",
+        password="password123!",
+    )
+
+    first_issue_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "Codex"},
+    )
+    second_issue_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "Claude"},
+    )
+    assert first_issue_response.status_code == 201
+    assert second_issue_response.status_code == 201
+
+    rename_response = client.patch(
+        f"/api/v1/auth/api-keys/{second_issue_response.json()['key']['id']}",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "Codex"},
+    )
+
+    assert rename_response.status_code == 409
+    assert rename_response.json()["error"]["code"] == "api_key_name_already_exists"
+
+
+def test_rename_api_key_returns_404_for_missing_key(client: TestClient) -> None:
+    registered = _register(
+        client,
+        email="rename-missing@example.com",
+        password="password123!",
+    )
+
+    rename_response = client.patch(
+        "/api/v1/auth/api-keys/00000000-0000-0000-0000-000000000001",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "Renamed"},
+    )
+
+    assert rename_response.status_code == 404
+    assert rename_response.json()["error"]["code"] == "api_key_not_found"
+
+
 @pytest.fixture
 def client(db_session) -> Generator[TestClient, None, None]:
     app.dependency_overrides[get_db_session] = lambda: db_session

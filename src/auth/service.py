@@ -22,6 +22,7 @@ from src.auth.schemas import (
     ApiKeySummary,
     AuthTokenResponse,
     CreateApiKeyRequest,
+    UpdateApiKeyRequest,
     UserProfile,
 )
 from src.auth.security import (
@@ -159,6 +160,48 @@ class AuthService:
             raise ApiKeyNotFoundError(str(api_key_id))
         self.session.delete(api_key)
         self.session.commit()
+
+    def rename_api_key(
+        self,
+        *,
+        user: UserModel,
+        api_key_id: UUID,
+        request: UpdateApiKeyRequest,
+    ) -> ApiKeySummary:
+        api_key = self.session.scalar(
+            select(UserApiKeyModel).where(
+                UserApiKeyModel.id == str(api_key_id),
+                UserApiKeyModel.user_id == user.id,
+            )
+        )
+        if api_key is None:
+            raise ApiKeyNotFoundError(str(api_key_id))
+
+        normalized_name = _normalize_api_key_name(request.name)
+        if api_key.name == normalized_name:
+            return self._to_api_key_summary(api_key)
+
+        existing_name = self.session.scalar(
+            select(UserApiKeyModel).where(
+                UserApiKeyModel.user_id == user.id,
+                UserApiKeyModel.name == normalized_name,
+                UserApiKeyModel.id != api_key.id,
+            )
+        )
+        if existing_name is not None:
+            raise ApiKeyNameAlreadyExistsError(normalized_name)
+
+        api_key.name = normalized_name
+        self.session.add(api_key)
+        try:
+            self.session.commit()
+        except IntegrityError as exc:
+            self.session.rollback()
+            if _is_api_key_name_unique_violation(exc):
+                raise ApiKeyNameAlreadyExistsError(normalized_name) from exc
+            raise
+        self.session.refresh(api_key)
+        return self._to_api_key_summary(api_key)
 
     def to_user_profile(self, user: UserModel) -> UserProfile:
         return self._to_user_profile(user)

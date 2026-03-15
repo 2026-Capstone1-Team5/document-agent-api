@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from src.auth.exceptions import InvalidApiKeyError, UserAlreadyExistsError
-from src.auth.schemas import CreateApiKeyRequest
+from src.auth.schemas import CreateApiKeyRequest, UpdateApiKeyRequest
 from src.auth.service import AuthService
 from src.config import get_settings
 
@@ -108,3 +108,34 @@ def test_issue_api_key_can_lookup_user_list_keys_and_revoke_one(db_session) -> N
 
     with pytest.raises(InvalidApiKeyError):
         service.get_user_from_api_key(second_issued.api_key)
+
+
+def test_rename_api_key_updates_name_without_changing_secret(db_session) -> None:
+    settings = get_settings()
+    service = AuthService(
+        session=db_session,
+        secret_key=settings.auth_secret_key,
+        access_token_ttl_seconds=settings.auth_access_token_ttl_seconds,
+    )
+
+    auth_payload = service.register(
+        email="rename-api-key@example.com",
+        password="password123!",
+    )
+    user = service.get_user_from_access_token(auth_payload.access_token)
+    issued = service.issue_api_key(
+        user=user,
+        request=CreateApiKeyRequest(name="Claude Desktop"),
+    )
+
+    renamed = service.rename_api_key(
+        user=user,
+        api_key_id=issued.key.id,
+        request=UpdateApiKeyRequest(name="Claude Production"),
+    )
+
+    assert renamed.id == issued.key.id
+    assert renamed.name == "Claude Production"
+    assert renamed.prefix == issued.key.prefix
+    looked_up_user = service.get_user_from_api_key(issued.api_key)
+    assert looked_up_user.id == str(auth_payload.user.id)

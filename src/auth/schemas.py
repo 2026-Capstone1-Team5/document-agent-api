@@ -40,6 +40,10 @@ class CreateApiKeyRequest(BaseSchema):
     name: str = Field(min_length=1, max_length=100)
 
 
+class UpdateApiKeyRequest(BaseSchema):
+    name: str = Field(min_length=1, max_length=100)
+
+
 class ApiKeySummary(BaseSchema):
     id: UUID
     name: str

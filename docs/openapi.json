@@ -222,6 +222,62 @@
             }
           }
         }
+      },
+      "patch": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Rename Api Key",
+        "operationId": "rename_api_key_api_v1_auth_api_keys__api_key_id__patch",
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "name": "api_key_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid",
+              "title": "Api Key Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateApiKeyRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiKeySummary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/api/v1/documents": {
@@ -891,6 +947,21 @@
           "password"
         ],
         "title": "RegisterRequest"
+      },
+      "UpdateApiKeyRequest": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Name"
+          }
+        },
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "title": "UpdateApiKeyRequest"
       },
       "UserProfile": {
         "properties": {
