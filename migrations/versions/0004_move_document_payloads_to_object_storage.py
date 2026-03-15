@@ -28,12 +28,26 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Rows created after this migration may store payloads only in object storage,
-    # leaving inline columns NULL. Backfill before restoring NOT NULL constraints.
-    op.execute(sa.text("UPDATE document_results SET markdown = '' WHERE markdown IS NULL"))
-    op.execute(
-        sa.text("UPDATE document_results SET canonical_json = '{}' WHERE canonical_json IS NULL")
-    )
+    # This downgrade is intentionally blocked when object-storage-backed rows exist,
+    # because restoring inline NOT NULL columns would otherwise lose real payloads.
+    bind = op.get_bind()
+    object_storage_backed_row_count = bind.execute(
+        sa.text(
+            """
+            SELECT COUNT(*)
+            FROM document_results
+            WHERE markdown_object_key IS NOT NULL
+               OR canonical_json_object_key IS NOT NULL
+               OR markdown IS NULL
+               OR canonical_json IS NULL
+            """
+        )
+    ).scalar_one()
+    if object_storage_backed_row_count > 0:
+        raise RuntimeError(
+            "Cannot downgrade 0004_document_object_storage while object-storage-backed "
+            "rows exist in document_results. Restore inline payloads first."
+        )
 
     with op.batch_alter_table("document_results") as batch_op:
         batch_op.drop_column("canonical_json_object_key")
