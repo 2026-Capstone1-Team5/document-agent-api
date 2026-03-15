@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -16,6 +17,8 @@ from src.documents.schemas import (
     ParseResult,
 )
 from src.storage.backends import ObjectStorage
+
+logger = logging.getLogger(__name__)
 
 
 class DocumentService:
@@ -218,8 +221,7 @@ class DocumentService:
 
         self.session.delete(document)
         self.session.commit()
-        for object_key in object_keys:
-            self.storage.delete_object(key=object_key)
+        self._delete_objects_best_effort(object_keys, retries=3)
 
     @staticmethod
     def _build_markdown(*, title: str, filename: str) -> str:
@@ -312,13 +314,19 @@ class DocumentService:
                 keys.append(document.result.canonical_json_object_key)
         return keys
 
-    def _delete_objects_best_effort(self, keys: list[str]) -> None:
+    def _delete_objects_best_effort(self, keys: list[str], *, retries: int = 1) -> None:
         for key in keys:
-            try:
-                self.storage.delete_object(key=key)
-            except Exception:
-                # Cleanup failures should not mask the original create failure.
-                continue
+            for attempt in range(retries):
+                try:
+                    self.storage.delete_object(key=key)
+                    break
+                except Exception as exc:
+                    if attempt == retries - 1:
+                        logger.warning(
+                            "best-effort storage cleanup failed for key=%s",
+                            key,
+                            exc_info=exc,
+                        )
 
     @staticmethod
     def _sanitize_filename(filename: str) -> str:
