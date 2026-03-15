@@ -52,7 +52,7 @@
 
 ### OpenAPI / Markdown Docs
 
-- `docs/openapi.json`에 `apiKey` 보안 스키마를 추가한다.
+- FastAPI가 노출하는 OpenAPI schema에 `apiKey` 보안 스키마를 반영한다.
 - 문서 엔드포인트 security를 `Bearer` 또는 `ApiKey` 허용 형태로 바꾼다.
 - `docs/API_SPEC.md`에 인증 방식과 key lifecycle을 서술한다.
 - `docs/DATA_MODEL.md`에 사용자-API key 저장 방식을 반영한다.
@@ -74,7 +74,7 @@
 
 1. Contract sync
    - 누락된 `docs/SPEC.md`, `docs/API_SPEC.md`, `docs/DATA_MODEL.md`를 생성한다.
-   - `docs/openapi.json`에 API key 보안 스키마와 신규 엔드포인트를 반영한다.
+   - 현재 OpenAPI 생성 결과에 API key 보안 스키마와 신규 엔드포인트를 반영한다.
 2. Persistence
    - `users` 모델과 Alembic migration에 API key 관련 컬럼을 추가한다.
    - `UserModel`과 관련 schema/type을 확장한다.
