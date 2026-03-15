@@ -28,6 +28,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Rows created after this migration may store payloads only in object storage,
+    # leaving inline columns NULL. Backfill before restoring NOT NULL constraints.
+    op.execute(sa.text("UPDATE document_results SET markdown = '' WHERE markdown IS NULL"))
+    op.execute(
+        sa.text("UPDATE document_results SET canonical_json = '{}' WHERE canonical_json IS NULL")
+    )
+
     with op.batch_alter_table("document_results") as batch_op:
         batch_op.drop_column("canonical_json_object_key")
         batch_op.drop_column("markdown_object_key")
