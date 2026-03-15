@@ -27,8 +27,8 @@ def _create_user(db_session, *, email: str = "owner@example.com") -> str:
     return user.id
 
 
-def test_list_documents_is_empty_by_default(db_session) -> None:
-    service = DocumentService(session=db_session)
+def test_list_documents_is_empty_by_default(db_session, object_storage) -> None:
+    service = DocumentService(session=db_session, storage=object_storage)
     owner_user_id = _create_user(db_session)
 
     result = service.list_documents(limit=20, offset=0, filename=None, owner_user_id=owner_user_id)
@@ -37,8 +37,8 @@ def test_list_documents_is_empty_by_default(db_session) -> None:
     assert len(result.items) == 0
 
 
-def test_list_documents_filters_by_filename(db_session) -> None:
-    service = DocumentService(session=db_session)
+def test_list_documents_filters_by_filename(db_session, object_storage) -> None:
+    service = DocumentService(session=db_session, storage=object_storage)
     owner_user_id = _create_user(db_session)
     service.create_document(
         owner_user_id=owner_user_id,
@@ -64,8 +64,8 @@ def test_list_documents_filters_by_filename(db_session) -> None:
     assert result.items[0].filename == "invoice.pdf"
 
 
-def test_create_document_returns_mock_payload(db_session) -> None:
-    service = DocumentService(session=db_session)
+def test_create_document_returns_mock_payload(db_session, object_storage) -> None:
+    service = DocumentService(session=db_session, storage=object_storage)
     owner_user_id = _create_user(db_session)
     file_bytes = b"%PDF-demo"
 
@@ -82,11 +82,12 @@ def test_create_document_returns_mock_payload(db_session) -> None:
 
     stored = db_session.get(DocumentModel, str(created.document.id))
     assert stored is not None
-    assert stored.file_data == file_bytes
+    assert stored.file_data is None
+    assert stored.source_object_key is not None
 
 
-def test_get_document_raises_for_unknown_id(db_session) -> None:
-    service = DocumentService(session=db_session)
+def test_get_document_raises_for_unknown_id(db_session, object_storage) -> None:
+    service = DocumentService(session=db_session, storage=object_storage)
     owner_user_id = _create_user(db_session)
 
     with pytest.raises(DocumentNotFoundError):
@@ -96,8 +97,8 @@ def test_get_document_raises_for_unknown_id(db_session) -> None:
         )
 
 
-def test_delete_document_removes_created_document(db_session) -> None:
-    service = DocumentService(session=db_session)
+def test_delete_document_removes_created_document(db_session, object_storage) -> None:
+    service = DocumentService(session=db_session, storage=object_storage)
     owner_user_id = _create_user(db_session)
     created = service.create_document(
         owner_user_id=owner_user_id,
@@ -112,8 +113,8 @@ def test_delete_document_removes_created_document(db_session) -> None:
         service.get_document(created.document.id, owner_user_id=owner_user_id)
 
 
-def test_list_documents_only_returns_owner_items(db_session) -> None:
-    service = DocumentService(session=db_session)
+def test_list_documents_only_returns_owner_items(db_session, object_storage) -> None:
+    service = DocumentService(session=db_session, storage=object_storage)
     owner_user_id = _create_user(db_session, email="owner@example.com")
     other_user_id = _create_user(db_session, email="other@example.com")
 

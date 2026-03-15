@@ -1,4 +1,6 @@
+import json
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
@@ -13,11 +15,13 @@ from src.documents.schemas import (
     DocumentSummary,
     ParseResult,
 )
+from src.storage.backends import ObjectStorage
 
 
 class DocumentService:
-    def __init__(self, *, session: Session) -> None:
+    def __init__(self, *, session: Session, storage: ObjectStorage) -> None:
         self.session = session
+        self.storage = storage
 
     def list_documents(
         self,
@@ -32,6 +36,7 @@ class DocumentService:
             .options(
                 load_only(
                     DocumentModel.id,
+                    DocumentModel.source_object_key,
                     DocumentModel.filename,
                     DocumentModel.content_type,
                     DocumentModel.created_at,
@@ -73,6 +78,7 @@ class DocumentService:
             .options(
                 load_only(
                     DocumentModel.id,
+                    DocumentModel.source_object_key,
                     DocumentModel.filename,
                     DocumentModel.content_type,
                     DocumentModel.created_at,
@@ -100,6 +106,7 @@ class DocumentService:
             .options(
                 load_only(
                     DocumentModel.id,
+                    DocumentModel.source_object_key,
                     DocumentModel.filename,
                     DocumentModel.content_type,
                     DocumentModel.created_at,
@@ -109,6 +116,8 @@ class DocumentService:
                     DocumentResultModel.document_id,
                     DocumentResultModel.markdown,
                     DocumentResultModel.canonical_json,
+                    DocumentResultModel.markdown_object_key,
+                    DocumentResultModel.canonical_json_object_key,
                 ),
             )
             .where(
@@ -119,7 +128,12 @@ class DocumentService:
         document = self.session.scalars(statement).first()
         if document is None or document.result is None:
             raise DocumentNotFoundError(document_id)
-        return self._to_document_parse_response(document)
+        markdown, canonical_json = self._load_result_payload(document)
+        return self._to_document_parse_response(
+            document,
+            markdown=markdown,
+            canonical_json=canonical_json,
+        )
 
     def create_document(
         self,
@@ -131,18 +145,43 @@ class DocumentService:
     ) -> DocumentParseResponse:
         document_id = str(uuid4())
         title = Path(filename).stem.replace("_", " ").replace("-", " ").strip() or "Mock Document"
+        safe_filename = self._sanitize_filename(filename)
+        source_object_key = f"documents/{document_id}/source/{safe_filename}"
+        markdown_object_key = f"documents/{document_id}/result/result.md"
+        canonical_json_object_key = f"documents/{document_id}/result/result.json"
+        markdown_content = self._build_markdown(title=title, filename=filename)
+        canonical_json_content = self._build_canonical_json(title=title, filename=filename)
+
+        self.storage.put_bytes(
+            key=source_object_key,
+            data=file_data,
+            content_type=content_type,
+        )
+        self.storage.put_bytes(
+            key=markdown_object_key,
+            data=markdown_content.encode("utf-8"),
+            content_type="text/markdown",
+        )
+        self.storage.put_bytes(
+            key=canonical_json_object_key,
+            data=json.dumps(canonical_json_content, ensure_ascii=False).encode("utf-8"),
+            content_type="application/json",
+        )
 
         document = DocumentModel(
             id=document_id,
             owner_user_id=owner_user_id,
+            source_object_key=source_object_key,
             filename=filename,
             content_type=content_type,
-            file_data=file_data,
+            file_data=None,
         )
         document.result = DocumentResultModel(
             document_id=document_id,
-            markdown=self._build_markdown(title=title, filename=filename),
-            canonical_json=self._build_canonical_json(title=title, filename=filename),
+            markdown=None,
+            canonical_json=None,
+            markdown_object_key=markdown_object_key,
+            canonical_json_object_key=canonical_json_object_key,
         )
 
         self.session.add(document)
@@ -150,7 +189,11 @@ class DocumentService:
         self.session.refresh(document)
         self.session.refresh(document, attribute_names=["result"])
 
-        return self._to_document_parse_response(document)
+        return self._to_document_parse_response(
+            document,
+            markdown=markdown_content,
+            canonical_json=canonical_json_content,
+        )
 
     def delete_document(self, document_id: UUID, *, owner_user_id: str) -> None:
         statement = select(DocumentModel).where(
@@ -161,8 +204,12 @@ class DocumentService:
         if document is None:
             raise DocumentNotFoundError(document_id)
 
+        object_keys = self._collect_object_keys(document)
+
         self.session.delete(document)
         self.session.commit()
+        for object_key in object_keys:
+            self.storage.delete_object(key=object_key)
 
     @staticmethod
     def _build_markdown(*, title: str, filename: str) -> str:
@@ -207,14 +254,54 @@ class DocumentService:
             updatedAt=document.updated_at,
         )
 
-    def _to_document_parse_response(self, document: DocumentModel) -> DocumentParseResponse:
-        if document.result is None:
-            raise DocumentNotFoundError(UUID(document.id))
-
+    def _to_document_parse_response(
+        self,
+        document: DocumentModel,
+        *,
+        markdown: str,
+        canonical_json: dict[str, Any],
+    ) -> DocumentParseResponse:
         return DocumentParseResponse(
             document=self._to_document_summary(document),
             result=ParseResult(
-                markdown=document.result.markdown,
-                canonicalJson=document.result.canonical_json,
+                markdown=markdown,
+                canonicalJson=canonical_json,
             ),
         )
+
+    def _load_result_payload(self, document: DocumentModel) -> tuple[str, dict[str, Any]]:
+        if document.result is None:
+            raise DocumentNotFoundError(UUID(document.id))
+
+        markdown_object_key = document.result.markdown_object_key
+        canonical_json_object_key = document.result.canonical_json_object_key
+        if markdown_object_key and canonical_json_object_key:
+            markdown = self.storage.get_bytes(key=markdown_object_key).decode("utf-8")
+            canonical_json_raw = self.storage.get_bytes(
+                key=canonical_json_object_key,
+            ).decode("utf-8")
+            canonical_json = json.loads(canonical_json_raw)
+            if not isinstance(canonical_json, dict):
+                raise ValueError("canonical json payload must be a JSON object")
+            return markdown, canonical_json
+
+        markdown = document.result.markdown
+        canonical_json = document.result.canonical_json
+        if markdown is None or canonical_json is None:
+            raise DocumentNotFoundError(UUID(document.id))
+        return markdown, canonical_json
+
+    def _collect_object_keys(self, document: DocumentModel) -> list[str]:
+        keys: list[str] = []
+        if document.source_object_key:
+            keys.append(document.source_object_key)
+        if document.result is not None:
+            if document.result.markdown_object_key:
+                keys.append(document.result.markdown_object_key)
+            if document.result.canonical_json_object_key:
+                keys.append(document.result.canonical_json_object_key)
+        return keys
+
+    @staticmethod
+    def _sanitize_filename(filename: str) -> str:
+        return filename.strip().replace("/", "_").replace("\\", "_") or "uploaded.bin"
