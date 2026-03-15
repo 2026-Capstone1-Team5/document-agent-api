@@ -219,9 +219,24 @@ class DocumentService:
 
         object_keys = self._collect_object_keys(document)
 
-        self._delete_objects_strict(object_keys)
-        self.session.delete(document)
-        self.session.commit()
+        backup_payloads, deleted_keys = self._delete_objects_strict(object_keys)
+        try:
+            self.session.delete(document)
+            self.session.commit()
+        except Exception as exc:
+            self.session.rollback()
+            restore_failed_keys = self._restore_objects_best_effort(
+                deleted_keys,
+                backup_payloads,
+            )
+            if restore_failed_keys:
+                logger.error(
+                    "delete rollback after commit failure failed for keys=%s",
+                    ",".join(restore_failed_keys),
+                )
+                msg = "database commit failed and object rollback also failed"
+                raise RuntimeError(msg) from exc
+            raise
 
     @staticmethod
     def _build_markdown(*, title: str, filename: str) -> str:
@@ -328,7 +343,7 @@ class DocumentService:
                             exc_info=exc,
                         )
 
-    def _delete_objects_strict(self, keys: list[str]) -> None:
+    def _delete_objects_strict(self, keys: list[str]) -> tuple[dict[str, bytes], list[str]]:
         backup_payloads: dict[str, bytes] = {}
         for key in keys:
             try:
@@ -361,6 +376,7 @@ class DocumentService:
                 msg = "storage delete failed and object rollback also failed"
                 raise RuntimeError(msg) from exc
             raise
+        return backup_payloads, deleted_keys
 
     def _restore_objects_best_effort(
         self,

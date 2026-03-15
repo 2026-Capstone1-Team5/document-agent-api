@@ -1,3 +1,4 @@
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -269,6 +270,50 @@ def test_delete_document_allows_pre_missing_blob(db_session, object_storage) -> 
 
     with pytest.raises(DocumentNotFoundError):
         service.get_document(created.document.id, owner_user_id=owner_user_id)
+
+
+def test_delete_document_restores_blobs_when_commit_fails(db_session, object_storage) -> None:
+    class CommitFailingSession:
+        def __init__(self, wrapped_session) -> None:
+            self.wrapped_session = wrapped_session
+            self.fail_next_commit = True
+
+        def scalars(self, *args, **kwargs):
+            return self.wrapped_session.scalars(*args, **kwargs)
+
+        def delete(self, *args, **kwargs):
+            return self.wrapped_session.delete(*args, **kwargs)
+
+        def commit(self) -> None:
+            if self.fail_next_commit:
+                self.fail_next_commit = False
+                raise RuntimeError("forced commit failure")
+            self.wrapped_session.commit()
+
+        def rollback(self) -> None:
+            self.wrapped_session.rollback()
+
+    normal_service = DocumentService(session=db_session, storage=object_storage)
+    owner_user_id = _create_user(db_session)
+    created = normal_service.create_document(
+        owner_user_id=owner_user_id,
+        filename="commit-fail-delete.pdf",
+        content_type="application/pdf",
+        file_data=b"commit-fail-delete",
+    )
+
+    failing_service = DocumentService(
+        session=cast(Any, CommitFailingSession(db_session)),
+        storage=object_storage,
+    )
+    with pytest.raises(RuntimeError, match="forced commit failure"):
+        failing_service.delete_document(created.document.id, owner_user_id=owner_user_id)
+
+    # DB row and blob payloads should both remain readable after rollback.
+    remaining = normal_service.get_document(created.document.id, owner_user_id=owner_user_id)
+    assert remaining.document.id == created.document.id
+    result = normal_service.get_document_result(created.document.id, owner_user_id=owner_user_id)
+    assert result.result.canonical_json["document"]["sourceFilename"] == "commit-fail-delete.pdf"
 
 
 def test_get_document_result_reads_payload_from_object_storage(db_session, object_storage) -> None:
