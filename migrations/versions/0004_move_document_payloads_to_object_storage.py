@@ -31,6 +31,23 @@ def downgrade() -> None:
     # This downgrade is intentionally blocked when object-storage-backed rows exist,
     # because restoring inline NOT NULL columns would otherwise lose real payloads.
     bind = op.get_bind()
+
+    source_object_backed_row_count = bind.execute(
+        sa.text(
+            """
+            SELECT COUNT(*)
+            FROM documents
+            WHERE source_object_key IS NOT NULL
+              AND file_data IS NULL
+            """
+        )
+    ).scalar_one()
+    if source_object_backed_row_count > 0:
+        raise RuntimeError(
+            "Cannot downgrade 0004_document_object_storage while source_object_key-only "
+            "rows exist in documents. Restore file_data from source objects first."
+        )
+
     object_storage_backed_row_count = bind.execute(
         sa.text(
             """
