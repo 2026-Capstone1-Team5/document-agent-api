@@ -20,6 +20,10 @@ class DocumentModel(Base):
         nullable=True,
         index=True,
     )
+    source_object_key: Mapped[str | None] = mapped_column(
+        String(512),
+        nullable=True,
+    )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(255), nullable=False)
     file_data: Mapped[bytes | None] = mapped_column(
@@ -50,8 +54,10 @@ class DocumentResultModel(Base):
         ForeignKey("documents.id", ondelete="CASCADE"),
         primary_key=True,
     )
-    markdown: Mapped[str] = mapped_column(Text, nullable=False)
-    canonical_json: Mapped[dict] = mapped_column(JSON, nullable=False)
+    markdown: Mapped[str | None] = mapped_column(Text, nullable=True)
+    canonical_json: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    markdown_object_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    canonical_json_object_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

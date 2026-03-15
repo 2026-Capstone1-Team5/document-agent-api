@@ -7,6 +7,7 @@ It is responsible for:
 - parsing execution
 - result retrieval
 - download and deletion APIs
+- object storage persistence for source/result payloads
 
 This repository serves the Web app and can be consumed by a separate MCP repository. It does not implement local OCR or VLM parser internals.
 
@@ -61,6 +62,22 @@ Set required auth token configuration:
 ```bash
 export AUTH_SECRET_KEY='replace-with-random-secret'
 export AUTH_ACCESS_TOKEN_TTL_SECONDS=1800
+```
+
+Set object storage configuration:
+
+```bash
+# local development backend (default)
+export STORAGE_BACKEND='local'
+export STORAGE_LOCAL_ROOT='data/storage'
+
+# Cloudflare R2 backend
+export STORAGE_BACKEND='r2'
+export STORAGE_BUCKET='your-r2-bucket'
+export STORAGE_R2_ENDPOINT='https://<accountid>.r2.cloudflarestorage.com'
+export STORAGE_R2_ACCESS_KEY_ID='...'
+export STORAGE_R2_SECRET_ACCESS_KEY='...'
+export STORAGE_R2_REGION='auto'
 ```
 
 Apply database migrations:

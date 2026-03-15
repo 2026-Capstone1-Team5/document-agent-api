@@ -2,12 +2,15 @@ import json
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/document_agent_api"
 DEFAULT_CORS_ALLOW_ORIGINS = ["https://document-agent-web.vercel.app"]
 DEFAULT_AUTH_ACCESS_TOKEN_TTL_SECONDS = 1800
+DEFAULT_STORAGE_BACKEND = "local"
+DEFAULT_STORAGE_LOCAL_ROOT = "data/storage"
+DEFAULT_STORAGE_R2_REGION = "auto"
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -60,6 +63,13 @@ class Settings(BaseSettings):
     )
     auth_secret_key: str
     auth_access_token_ttl_seconds: int = DEFAULT_AUTH_ACCESS_TOKEN_TTL_SECONDS
+    storage_backend: str = DEFAULT_STORAGE_BACKEND
+    storage_local_root: str = DEFAULT_STORAGE_LOCAL_ROOT
+    storage_bucket: str | None = None
+    storage_r2_endpoint: str | None = None
+    storage_r2_access_key_id: str | None = None
+    storage_r2_secret_access_key: str | None = None
+    storage_r2_region: str = DEFAULT_STORAGE_R2_REGION
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -87,6 +97,58 @@ class Settings(BaseSettings):
             msg = "auth_access_token_ttl_seconds must be greater than 0"
             raise ValueError(msg)
         return value
+
+    @field_validator("storage_backend")
+    @classmethod
+    def validate_storage_backend(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"local", "r2"}:
+            msg = "storage_backend must be one of: local, r2"
+            raise ValueError(msg)
+        return normalized
+
+    @field_validator(
+        "storage_bucket",
+        "storage_r2_endpoint",
+        "storage_r2_access_key_id",
+        "storage_r2_secret_access_key",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_storage_string(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("storage_r2_region")
+    @classmethod
+    def validate_storage_r2_region(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "storage_r2_region must not be empty"
+            raise ValueError(msg)
+        return normalized
+
+    @model_validator(mode="after")
+    def validate_storage_requirements(self) -> "Settings":
+        if self.storage_backend == "r2":
+            missing: list[str] = []
+            if not self.storage_bucket:
+                missing.append("storage_bucket")
+            if not self.storage_r2_endpoint:
+                missing.append("storage_r2_endpoint")
+            if not self.storage_r2_access_key_id:
+                missing.append("storage_r2_access_key_id")
+            if not self.storage_r2_secret_access_key:
+                missing.append("storage_r2_secret_access_key")
+
+            if missing:
+                joined = ", ".join(missing)
+                msg = f"Missing required R2 settings: {joined}"
+                raise ValueError(msg)
+
+        return self
 
 
 @lru_cache

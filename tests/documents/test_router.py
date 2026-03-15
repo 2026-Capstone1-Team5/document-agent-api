@@ -9,10 +9,11 @@ from src.database import get_db_session
 from src.documents.models import DocumentModel
 from src.documents.service import DocumentService
 from src.main import app
+from src.storage.dependencies import get_object_storage
 
 
 @pytest.fixture
-def client(db_session) -> Generator[TestClient, None, None]:
+def client(db_session, object_storage) -> Generator[TestClient, None, None]:
     settings = get_settings()
     auth_service = AuthService(
         session=db_session,
@@ -24,7 +25,7 @@ def client(db_session) -> Generator[TestClient, None, None]:
         password="password123!",
     )
 
-    DocumentService(session=db_session).create_document(
+    DocumentService(session=db_session, storage=object_storage).create_document(
         owner_user_id=str(auth_payload.user.id),
         filename="sample.pdf",
         content_type="application/pdf",
@@ -32,6 +33,7 @@ def client(db_session) -> Generator[TestClient, None, None]:
     )
 
     app.dependency_overrides[get_db_session] = lambda: db_session
+    app.dependency_overrides[get_object_storage] = lambda: object_storage
     with TestClient(app, raise_server_exceptions=False) as test_client:
         test_client.headers.update({"Authorization": f"Bearer {auth_payload.access_token}"})
         yield test_client
@@ -61,7 +63,8 @@ def test_create_document_returns_mock_result(client: TestClient) -> None:
 
     stored = db_session.get(DocumentModel, body["document"]["id"])
     assert stored is not None
-    assert stored.file_data == b"%PDF-mock"
+    assert stored.file_data is None
+    assert stored.source_object_key is not None
 
 
 def test_create_document_rejects_unsupported_type(client: TestClient) -> None:
@@ -107,8 +110,9 @@ def test_unknown_document_returns_structured_404(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "document_not_found"
 
 
-def test_documents_requires_auth_header(db_session) -> None:
+def test_documents_requires_auth_header(db_session, object_storage) -> None:
     app.dependency_overrides[get_db_session] = lambda: db_session
+    app.dependency_overrides[get_object_storage] = lambda: object_storage
     with TestClient(app, raise_server_exceptions=False) as test_client:
         response = test_client.get("/api/v1/documents")
     app.dependency_overrides.clear()

@@ -19,6 +19,22 @@ from src.database import Base
 from src.documents import models  # noqa: F401
 
 
+class InMemoryObjectStorage:
+    def __init__(self) -> None:
+        self._objects: dict[str, bytes] = {}
+
+    def put_bytes(self, *, key: str, data: bytes, content_type: str) -> str:
+        del content_type
+        self._objects[key] = data
+        return key
+
+    def get_bytes(self, *, key: str) -> bytes:
+        return self._objects[key]
+
+    def delete_object(self, *, key: str) -> None:
+        self._objects.pop(key, None)
+
+
 @pytest.fixture
 def db_engine():
     database_url = getenv("DOCUMENT_AGENT_API_TEST_DATABASE_URL")
@@ -48,3 +64,8 @@ def db_session(db_engine) -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+
+
+@pytest.fixture
+def object_storage() -> InMemoryObjectStorage:
+    return InMemoryObjectStorage()
