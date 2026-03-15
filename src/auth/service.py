@@ -115,6 +115,11 @@ def _is_valid_email(email: str) -> bool:
 
 
 def _is_email_unique_violation(exc: IntegrityError) -> bool:
+    diag = getattr(exc.orig, "diag", None) if exc.orig is not None else None
+    constraint_name = getattr(diag, "constraint_name", None)
+    if isinstance(constraint_name, str):
+        return constraint_name.lower() == "ix_users_email"
+
     orig_text = str(exc.orig).lower() if exc.orig is not None else ""
     statement_text = str(exc.statement).lower() if exc.statement is not None else ""
     message = f"{orig_text} {statement_text}"
@@ -124,8 +129,5 @@ def _is_email_unique_violation(exc: IntegrityError) -> bool:
         for token in (
             "ix_users_email",
             "users.email",
-            "unique constraint",
-            "duplicate key value",
-            "unique violation",
         )
     )
