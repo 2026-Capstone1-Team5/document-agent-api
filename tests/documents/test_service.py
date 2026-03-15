@@ -175,6 +175,46 @@ def test_create_document_rolls_back_storage_on_write_failure(db_session) -> None
     assert storage.objects == {}
 
 
+def test_create_document_raises_when_cleanup_after_failure_is_incomplete(db_session) -> None:
+    class CreateCleanupFailingStorage:
+        def __init__(self) -> None:
+            self.objects: dict[str, bytes] = {}
+            self.put_count = 0
+            self.delete_count = 0
+
+        def put_bytes(self, *, key: str, data: bytes, content_type: str) -> str:
+            del content_type
+            self.put_count += 1
+            if self.put_count == 3:
+                raise RuntimeError("failed to write canonical json")
+            self.objects[key] = data
+            return key
+
+        def get_bytes(self, *, key: str) -> bytes:
+            return self.objects[key]
+
+        def delete_object(self, *, key: str) -> None:
+            self.delete_count += 1
+            if self.delete_count == 1:
+                raise RuntimeError("cleanup delete failed")
+            self.objects.pop(key, None)
+
+    storage = CreateCleanupFailingStorage()
+    service = DocumentService(session=db_session, storage=storage)
+    owner_user_id = _create_user(db_session)
+
+    with pytest.raises(RuntimeError, match="object cleanup is incomplete"):
+        service.create_document(
+            owner_user_id=owner_user_id,
+            filename="cleanup-fail.pdf",
+            content_type="application/pdf",
+            file_data=b"cleanup-fail",
+        )
+
+    # Document row must not exist even when cleanup is incomplete.
+    assert db_session.query(DocumentModel).count() == 0
+
+
 def test_delete_document_fails_when_storage_delete_fails(db_session) -> None:
     class DeleteFailingStorage:
         def __init__(self) -> None:

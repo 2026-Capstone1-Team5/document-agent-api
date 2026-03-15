@@ -194,9 +194,23 @@ class DocumentService:
 
             self.session.add(document)
             self.session.commit()
-        except Exception:
+        except Exception as exc:
             self.session.rollback()
-            self._delete_objects_best_effort(uploaded_keys)
+            cleanup_failed_keys = self._delete_objects_best_effort(
+                uploaded_keys,
+                retries=3,
+            )
+            if cleanup_failed_keys:
+                logger.error(
+                    "create cleanup failed for document_id=%s keys=%s",
+                    document_id,
+                    ",".join(cleanup_failed_keys),
+                )
+                msg = (
+                    "document creation failed and object cleanup is incomplete; "
+                    f"document_id={document_id}, failed_keys={','.join(cleanup_failed_keys)}"
+                )
+                raise RuntimeError(msg) from exc
             raise
 
         self.session.refresh(document)
@@ -329,11 +343,14 @@ class DocumentService:
                 keys.append(document.result.canonical_json_object_key)
         return keys
 
-    def _delete_objects_best_effort(self, keys: list[str], *, retries: int = 1) -> None:
+    def _delete_objects_best_effort(self, keys: list[str], *, retries: int = 1) -> list[str]:
+        failed: list[str] = []
         for key in keys:
+            deleted = False
             for attempt in range(retries):
                 try:
                     self.storage.delete_object(key=key)
+                    deleted = True
                     break
                 except Exception as exc:
                     if attempt == retries - 1:
@@ -342,6 +359,9 @@ class DocumentService:
                             key,
                             exc_info=exc,
                         )
+            if not deleted:
+                failed.append(key)
+        return failed
 
     def _delete_objects_strict(self, keys: list[str]) -> tuple[dict[str, bytes], list[str]]:
         backup_payloads: dict[str, bytes] = {}
