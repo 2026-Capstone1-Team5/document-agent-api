@@ -138,6 +138,166 @@ def test_register_rejects_invalid_email_format(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "invalid_email_format"
 
 
+def test_api_key_status_requires_authentication(client: TestClient) -> None:
+    response = client.get("/api/v1/auth/api-keys")
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "unauthorized"
+
+
+def test_api_key_list_is_empty_before_issue(client: TestClient) -> None:
+    registered = _register(
+        client,
+        email="status@example.com",
+        password="password123!",
+    )
+
+    response = client.get(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"items": []}
+
+
+def test_issue_api_key_returns_raw_key_and_list_entry(client: TestClient) -> None:
+    registered = _register(
+        client,
+        email="issue@example.com",
+        password="password123!",
+    )
+
+    issue_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "Claude Desktop"},
+    )
+
+    assert issue_response.status_code == 201
+    issued = issue_response.json()
+    assert issued["apiKey"].startswith("dagk_")
+    assert issued["key"]["name"] == "Claude Desktop"
+    assert issued["key"]["prefix"] == issued["apiKey"][: len(issued["key"]["prefix"])]
+    assert issued["key"]["createdAt"] is not None
+
+    list_response = client.get(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+    )
+
+    assert list_response.status_code == 200
+    assert list_response.json() == {
+        "items": [
+            {
+                "id": issued["key"]["id"],
+                "name": "Claude Desktop",
+                "prefix": issued["key"]["prefix"],
+                "createdAt": issued["key"]["createdAt"],
+            }
+        ]
+    }
+
+
+def test_issue_api_key_allows_multiple_named_keys(client: TestClient) -> None:
+    registered = _register(
+        client,
+        email="rotate@example.com",
+        password="password123!",
+    )
+
+    first_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "Codex"},
+    )
+    second_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "Claude Code"},
+    )
+
+    assert first_response.status_code == 201
+    assert second_response.status_code == 201
+    assert first_response.json()["apiKey"] != second_response.json()["apiKey"]
+    assert first_response.json()["key"]["prefix"] != second_response.json()["key"]["prefix"]
+
+    list_response = client.get(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+    )
+
+    assert list_response.status_code == 200
+    assert [item["name"] for item in list_response.json()["items"]] == ["Claude Code", "Codex"]
+
+
+def test_issue_api_key_rejects_duplicate_name(client: TestClient) -> None:
+    registered = _register(
+        client,
+        email="duplicate@example.com",
+        password="password123!",
+    )
+
+    first_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "MCP"},
+    )
+    duplicate_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "MCP"},
+    )
+
+    assert first_response.status_code == 201
+    assert duplicate_response.status_code == 409
+    assert duplicate_response.json()["error"]["code"] == "api_key_name_already_exists"
+
+
+def test_revoke_api_key_removes_only_target_key(client: TestClient) -> None:
+    registered = _register(
+        client,
+        email="revoke@example.com",
+        password="password123!",
+    )
+
+    first_issue_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "Codex"},
+    )
+    second_issue_response = client.post(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+        json={"name": "Claude"},
+    )
+    assert first_issue_response.status_code == 201
+    assert second_issue_response.status_code == 201
+
+    revoke_response = client.delete(
+        f"/api/v1/auth/api-keys/{first_issue_response.json()['key']['id']}",
+        headers=_auth_headers(registered["accessToken"]),
+    )
+    assert revoke_response.status_code == 204
+
+    list_response = client.get(
+        "/api/v1/auth/api-keys",
+        headers=_auth_headers(registered["accessToken"]),
+    )
+
+    assert list_response.status_code == 200
+    assert list_response.json() == {
+        "items": [
+            {
+                "id": second_issue_response.json()["key"]["id"],
+                "name": "Claude",
+                "prefix": second_issue_response.json()["key"]["prefix"],
+                "createdAt": second_issue_response.json()["key"]["createdAt"],
+            }
+        ]
+    }
+
+
 @pytest.fixture
 def client(db_session) -> Generator[TestClient, None, None]:
     app.dependency_overrides[get_db_session] = lambda: db_session

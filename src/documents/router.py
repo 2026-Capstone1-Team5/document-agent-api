@@ -3,7 +3,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from src.auth.dependencies import get_current_user
+from src.auth.dependencies import get_current_document_user
 from src.auth.models import UserModel
 from src.common.errors import ApiError
 from src.documents.dependencies import get_document_service
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 @router.post("", response_model=DocumentParseResponse, status_code=201)
 async def create_document(
     file: UploadFile = File(...),
-    current_user: UserModel = Depends(get_current_user),
+    current_user: UserModel = Depends(get_current_document_user),
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentParseResponse:
     filename = file.filename or ""
@@ -61,7 +61,7 @@ def list_documents(
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     filename: str | None = Query(default=None),
-    current_user: UserModel = Depends(get_current_user),
+    current_user: UserModel = Depends(get_current_document_user),
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentListResponse:
     return service.list_documents(
@@ -75,7 +75,7 @@ def list_documents(
 @router.get("/{document_id}", response_model=DocumentResponse)
 def get_document(
     document_id: UUID,
-    current_user: UserModel = Depends(get_current_user),
+    current_user: UserModel = Depends(get_current_document_user),
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentResponse:
     try:
@@ -91,7 +91,7 @@ def get_document(
 @router.get("/{document_id}/result", response_model=DocumentParseResponse)
 def get_document_result(
     document_id: UUID,
-    current_user: UserModel = Depends(get_current_user),
+    current_user: UserModel = Depends(get_current_document_user),
     service: DocumentService = Depends(get_document_service),
 ) -> DocumentParseResponse:
     try:
@@ -108,7 +108,7 @@ def get_document_result(
 def download_document_result(
     document_id: UUID,
     format: str = Query(...),
-    current_user: UserModel = Depends(get_current_user),
+    current_user: UserModel = Depends(get_current_document_user),
     service: DocumentService = Depends(get_document_service),
 ) -> Response:
     try:
@@ -144,7 +144,7 @@ def download_document_result(
 @router.delete("/{document_id}", status_code=204)
 def delete_document(
     document_id: UUID,
-    current_user: UserModel = Depends(get_current_user),
+    current_user: UserModel = Depends(get_current_document_user),
     service: DocumentService = Depends(get_document_service),
 ) -> Response:
     try:

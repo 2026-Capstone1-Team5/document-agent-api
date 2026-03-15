@@ -198,7 +198,7 @@ class DocumentService:
             self.session.rollback()
             cleanup_failed_keys = self._delete_objects_best_effort(
                 uploaded_keys,
-                retries=3,
+                retries=1,
             )
             if cleanup_failed_keys:
                 recovered_document = self._persist_document_after_incomplete_create_cleanup(

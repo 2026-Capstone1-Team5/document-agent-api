@@ -7,11 +7,14 @@ from binascii import Error as BinasciiError
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from src.auth.exceptions import ExpiredAccessTokenError, InvalidAccessTokenError
+from src.auth.exceptions import ExpiredAccessTokenError, InvalidAccessTokenError, InvalidApiKeyError
 
 PBKDF2_ALGORITHM = "sha256"
 PBKDF2_ITERATIONS = 600_000
 PBKDF2_SALT_BYTES = 16
+API_KEY_PREFIX = "dagk_"
+API_KEY_TOKEN_BYTES = 32
+API_KEY_DISPLAY_PREFIX_LENGTH = len(API_KEY_PREFIX) + 12
 
 
 @dataclass(slots=True)
@@ -81,6 +84,20 @@ def create_access_token(
     return f"{encoded_header}.{encoded_payload}.{encoded_signature}"
 
 
+def create_api_key() -> tuple[str, str]:
+    raw_api_key = f"{API_KEY_PREFIX}{secrets.token_urlsafe(API_KEY_TOKEN_BYTES)}"
+    return raw_api_key, raw_api_key[:API_KEY_DISPLAY_PREFIX_LENGTH]
+
+
+def hash_api_key(api_key: str) -> str:
+    normalized_api_key = normalize_api_key(api_key)
+    return hashlib.sha256(normalized_api_key.encode("utf-8")).hexdigest()
+
+
+def is_probable_api_key(value: str) -> bool:
+    return value.startswith(API_KEY_PREFIX)
+
+
 def decode_access_token(*, token: str, secret_key: str) -> AccessTokenPayload:
     try:
         encoded_header, encoded_payload, encoded_signature = token.split(".")
@@ -121,6 +138,13 @@ def decode_access_token(*, token: str, secret_key: str) -> AccessTokenPayload:
         email=email,
         expires_at=expires_at,
     )
+
+
+def normalize_api_key(api_key: str) -> str:
+    normalized = api_key.strip()
+    if not normalized.startswith(API_KEY_PREFIX) or len(normalized) <= len(API_KEY_PREFIX):
+        raise InvalidApiKeyError
+    return normalized
 
 
 def _base64url_encode(data: bytes) -> str:
