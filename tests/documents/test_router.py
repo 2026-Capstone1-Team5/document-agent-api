@@ -120,6 +120,22 @@ def test_document_source_returns_inline_bytes_by_default(client: TestClient) -> 
     assert response.headers["x-content-type-options"] == "nosniff"
 
 
+def test_document_source_uses_server_side_pdf_media_type_for_inline_preview(
+    client: TestClient,
+) -> None:
+    created = client.post(
+        "/api/v1/documents",
+        files={"file": ("source.pdf", b"<html>not-a-pdf</html>", "text/html")},
+    ).json()
+    document_id = created["document"]["id"]
+
+    response = client.get(f"/api/v1/documents/{document_id}/source")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"].startswith("inline;")
+
+
 def test_document_source_supports_attachment_disposition(client: TestClient) -> None:
     created = client.post(
         "/api/v1/documents",
@@ -133,6 +149,22 @@ def test_document_source_supports_attachment_disposition(client: TestClient) -> 
     )
 
     assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith("attachment;")
+
+
+def test_document_source_forces_attachment_for_unsafe_inline_media_type(
+    client: TestClient,
+) -> None:
+    created = client.post(
+        "/api/v1/documents",
+        files={"file": ("vector", b"<svg></svg>", "image/svg+xml")},
+    ).json()
+    document_id = created["document"]["id"]
+
+    response = client.get(f"/api/v1/documents/{document_id}/source")
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/octet-stream"
     assert response.headers["content-disposition"].startswith("attachment;")
 
 

@@ -19,6 +19,30 @@ from src.documents.service import DocumentService
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
+INLINE_SAFE_SOURCE_MEDIA_TYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+}
+SOURCE_MEDIA_TYPES_BY_EXTENSION = {
+    ".hwp": "application/vnd.hancom.hwp",
+    ".hwpx": "application/vnd.hancom.hwpx",
+    ".jpeg": "image/jpeg",
+    ".jpg": "image/jpeg",
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+}
+SOURCE_MEDIA_TYPES_BY_CONTENT_TYPE = {
+    "application/haansoft-hwp": "application/vnd.hancom.hwp",
+    "application/haansoft-hwpx": "application/vnd.hancom.hwpx",
+    "application/pdf": "application/pdf",
+    "application/vnd.hancom.hwp": "application/vnd.hancom.hwp",
+    "application/vnd.hancom.hwpx": "application/vnd.hancom.hwpx",
+    "application/x-hwp": "application/vnd.hancom.hwp",
+    "image/jpeg": "image/jpeg",
+    "image/png": "image/png",
+}
+
 
 @router.post("", response_model=DocumentParseResponse, status_code=201)
 async def create_document(
@@ -124,13 +148,18 @@ def get_document_source(
             code="source_file_unavailable",
             message=str(exc),
         ) from exc
+    response_disposition, response_media_type = _resolve_source_response_metadata(
+        filename=source.filename,
+        content_type=source.content_type,
+        requested_disposition=disposition,
+    )
 
     return Response(
         content=source.data,
-        media_type=source.content_type,
+        media_type=response_media_type,
         headers={
             "Content-Disposition": _build_content_disposition(
-                disposition=disposition,
+                disposition=response_disposition,
                 filename=source.filename,
             ),
             "X-Content-Type-Options": "nosniff",
@@ -250,3 +279,28 @@ def _build_content_disposition(*, disposition: str, filename: str) -> str:
 
     encoded_filename = quote(safe_filename, safe="")
     return f"{disposition}; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"
+
+
+def _resolve_source_response_metadata(
+    *,
+    filename: str,
+    content_type: str,
+    requested_disposition: str,
+) -> tuple[str, str]:
+    media_type = _determine_source_media_type(filename=filename, content_type=content_type)
+    if requested_disposition == "inline" and media_type not in INLINE_SAFE_SOURCE_MEDIA_TYPES:
+        return "attachment", "application/octet-stream"
+    return requested_disposition, media_type
+
+
+def _determine_source_media_type(*, filename: str, content_type: str) -> str:
+    lowered_filename = filename.strip().lower()
+    for extension, media_type in SOURCE_MEDIA_TYPES_BY_EXTENSION.items():
+        if lowered_filename.endswith(extension):
+            return media_type
+
+    normalized_content_type = content_type.strip().lower()
+    return SOURCE_MEDIA_TYPES_BY_CONTENT_TYPE.get(
+        normalized_content_type,
+        "application/octet-stream",
+    )

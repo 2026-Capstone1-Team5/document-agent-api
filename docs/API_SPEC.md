@@ -123,9 +123,11 @@
 - Requires JWT or API key.
 - Default `disposition` is `inline`.
 - `disposition=inline` is intended for preview embeds such as a PDF viewer.
+- `inline` is only honored for preview-safe server-determined media types such as PDF and supported raster images.
+- If the source media type is not preview-safe, the response is forced to `attachment` and returned as `application/octet-stream`.
 - `disposition=attachment` is intended for explicit download UX.
 - Response headers:
-  - `Content-Type`: stored source media type
+  - `Content-Type`: server-determined safe source media type
   - `Content-Disposition`: `inline` or `attachment` with filename
   - `X-Content-Type-Options: nosniff`
 - Failure cases:
