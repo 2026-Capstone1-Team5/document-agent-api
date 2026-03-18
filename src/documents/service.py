@@ -1,5 +1,6 @@
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -7,7 +8,7 @@ from uuid import UUID, uuid4
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload, load_only
 
-from src.documents.exceptions import DocumentNotFoundError
+from src.documents.exceptions import DocumentNotFoundError, DocumentSourceUnavailableError
 from src.documents.models import DocumentModel, DocumentResultModel
 from src.documents.schemas import (
     DocumentListResponse,
@@ -16,9 +17,17 @@ from src.documents.schemas import (
     DocumentSummary,
     ParseResult,
 )
+from src.documents.utils import sanitize_document_filename
 from src.storage.backends import ObjectStorage
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentSourcePayload:
+    filename: str
+    content_type: str
+    data: bytes
 
 
 class DocumentService:
@@ -98,6 +107,37 @@ class DocumentService:
             raise DocumentNotFoundError(document_id)
         return DocumentResponse(document=self._to_document_summary(document))
 
+    def get_document_source(
+        self,
+        document_id: UUID,
+        *,
+        owner_user_id: str,
+    ) -> DocumentSourcePayload:
+        statement = (
+            select(DocumentModel)
+            .options(
+                load_only(
+                    DocumentModel.id,
+                    DocumentModel.source_object_key,
+                    DocumentModel.filename,
+                    DocumentModel.content_type,
+                )
+            )
+            .where(
+                DocumentModel.id == str(document_id),
+                DocumentModel.owner_user_id == owner_user_id,
+            )
+        )
+        document = self.session.scalars(statement).first()
+        if document is None:
+            raise DocumentNotFoundError(document_id)
+
+        return DocumentSourcePayload(
+            filename=document.filename,
+            content_type=document.content_type,
+            data=self._load_source_payload(document),
+        )
+
     def get_document_result(
         self,
         document_id: UUID,
@@ -148,7 +188,7 @@ class DocumentService:
     ) -> DocumentParseResponse:
         document_id = str(uuid4())
         title = Path(filename).stem.replace("_", " ").replace("-", " ").strip() or "Mock Document"
-        safe_filename = self._sanitize_filename(filename)
+        safe_filename = sanitize_document_filename(filename)
         source_object_key = f"documents/{document_id}/source/{safe_filename}"
         markdown_object_key = f"documents/{document_id}/result/result.md"
         canonical_json_object_key = f"documents/{document_id}/result/result.json"
@@ -347,6 +387,29 @@ class DocumentService:
         if markdown is None or canonical_json is None:
             raise DocumentNotFoundError(UUID(document.id))
         return markdown, canonical_json
+
+    def _load_source_payload(self, document: DocumentModel) -> bytes:
+        if document.source_object_key:
+            try:
+                return self.storage.get_bytes(key=document.source_object_key)
+            except Exception as exc:
+                if document.file_data is None:
+                    logger.warning(
+                        "failed to read source object key=%s with no inline fallback",
+                        document.source_object_key,
+                        exc_info=exc,
+                    )
+                    raise DocumentSourceUnavailableError(UUID(document.id)) from exc
+                logger.warning(
+                    "failed to read source object key=%s, using inline fallback",
+                    document.source_object_key,
+                    exc_info=exc,
+                )
+
+        if document.file_data is not None:
+            return document.file_data
+
+        raise DocumentSourceUnavailableError(UUID(document.id))
 
     def _collect_object_keys(self, document: DocumentModel) -> list[str]:
         keys: list[str] = []
@@ -548,14 +611,3 @@ class DocumentService:
                 if code in {"nosuchkey", "notfound", "404"}:
                     return True
         return False
-
-    @staticmethod
-    def _sanitize_filename(filename: str) -> str:
-        normalized = filename.strip().replace("\\", "/")
-        if not normalized:
-            return "uploaded.bin"
-
-        leaf = normalized.split("/")[-1].strip()
-        if not leaf or leaf in {".", ".."}:
-            return "uploaded.bin"
-        return leaf

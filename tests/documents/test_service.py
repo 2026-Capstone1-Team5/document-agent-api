@@ -6,9 +6,10 @@ from sqlalchemy import inspect
 
 from src.auth.models import UserModel
 from src.auth.security import hash_password
-from src.documents.exceptions import DocumentNotFoundError
+from src.documents.exceptions import DocumentNotFoundError, DocumentSourceUnavailableError
 from src.documents.models import DocumentModel
 from src.documents.service import DocumentService
+from src.documents.utils import sanitize_document_filename
 from src.storage.backends import LocalObjectStorage
 
 
@@ -99,6 +100,115 @@ def test_get_document_raises_for_unknown_id(db_session, object_storage) -> None:
         )
 
 
+def test_get_document_source_reads_payload_from_object_storage(db_session, object_storage) -> None:
+    service = DocumentService(session=db_session, storage=object_storage)
+    owner_user_id = _create_user(db_session)
+    created = service.create_document(
+        owner_user_id=owner_user_id,
+        filename="source.pdf",
+        content_type="application/pdf",
+        file_data=b"source-bytes",
+    )
+
+    source = service.get_document_source(created.document.id, owner_user_id=owner_user_id)
+
+    assert source.filename == "source.pdf"
+    assert source.content_type == "application/pdf"
+    assert source.data == b"source-bytes"
+
+
+def test_get_document_source_keeps_file_data_deferred_before_fallback(
+    db_session,
+    object_storage,
+) -> None:
+    class InspectingDocumentService(DocumentService):
+        def _load_source_payload(self, document: DocumentModel) -> bytes:
+            assert "file_data" in inspect(document).unloaded
+            return b"source-bytes"
+
+    owner_user_id = _create_user(db_session)
+    created = DocumentService(session=db_session, storage=object_storage).create_document(
+        owner_user_id=owner_user_id,
+        filename="source.pdf",
+        content_type="application/pdf",
+        file_data=b"source-bytes",
+    )
+
+    source = InspectingDocumentService(
+        session=db_session,
+        storage=object_storage,
+    ).get_document_source(created.document.id, owner_user_id=owner_user_id)
+
+    assert source.data == b"source-bytes"
+
+
+def test_get_document_source_uses_inline_fallback_when_object_backed_source_disappears(
+    db_session,
+) -> None:
+    class SourceCleanupFailingStorage:
+        def __init__(self) -> None:
+            self.objects: dict[str, bytes] = {}
+            self.put_count = 0
+
+        def put_bytes(self, *, key: str, data: bytes, content_type: str) -> str:
+            del content_type
+            self.put_count += 1
+            if self.put_count == 3:
+                raise RuntimeError("failed to write canonical json")
+            self.objects[key] = data
+            return key
+
+        def get_bytes(self, *, key: str) -> bytes:
+            return self.objects[key]
+
+        def delete_object(self, *, key: str) -> None:
+            if "/source/" in key:
+                raise RuntimeError("cleanup delete failed")
+            self.objects.pop(key, None)
+
+    storage = SourceCleanupFailingStorage()
+    service = DocumentService(session=db_session, storage=storage)
+    owner_user_id = _create_user(db_session)
+
+    created = service.create_document(
+        owner_user_id=owner_user_id,
+        filename="source-fallback.pdf",
+        content_type="application/pdf",
+        file_data=b"source-fallback-bytes",
+    )
+    stored = db_session.get(DocumentModel, str(created.document.id))
+    assert stored is not None
+    assert stored.source_object_key is not None
+    assert stored.file_data == b"source-fallback-bytes"
+
+    storage.objects.pop(stored.source_object_key, None)
+
+    source = service.get_document_source(created.document.id, owner_user_id=owner_user_id)
+    assert source.data == b"source-fallback-bytes"
+
+
+def test_get_document_source_raises_when_source_payload_is_unavailable(
+    db_session,
+    object_storage,
+) -> None:
+    service = DocumentService(session=db_session, storage=object_storage)
+    owner_user_id = _create_user(db_session)
+    created = service.create_document(
+        owner_user_id=owner_user_id,
+        filename="source-missing.pdf",
+        content_type="application/pdf",
+        file_data=b"source-missing-bytes",
+    )
+    stored = db_session.get(DocumentModel, str(created.document.id))
+    assert stored is not None
+    assert stored.source_object_key is not None
+
+    object_storage._objects.pop(stored.source_object_key, None)  # noqa: SLF001
+
+    with pytest.raises(DocumentSourceUnavailableError):
+        service.get_document_source(created.document.id, owner_user_id=owner_user_id)
+
+
 def test_delete_document_removes_created_document(db_session, object_storage) -> None:
     service = DocumentService(session=db_session, storage=object_storage)
     owner_user_id = _create_user(db_session)
@@ -182,7 +292,6 @@ def test_create_document_persists_fallback_when_cleanup_after_failure_is_incompl
         def __init__(self) -> None:
             self.objects: dict[str, bytes] = {}
             self.put_count = 0
-            self.delete_count = 0
 
         def put_bytes(self, *, key: str, data: bytes, content_type: str) -> str:
             del content_type
@@ -196,8 +305,7 @@ def test_create_document_persists_fallback_when_cleanup_after_failure_is_incompl
             return self.objects[key]
 
         def delete_object(self, *, key: str) -> None:
-            self.delete_count += 1
-            if self.delete_count == 1:
+            if "/source/" in key:
                 raise RuntimeError("cleanup delete failed")
             self.objects.pop(key, None)
 
@@ -227,7 +335,6 @@ def test_create_document_persists_fallback_when_commit_and_cleanup_fail(db_sessi
     class CommitFailOnceCleanupFailStorage:
         def __init__(self) -> None:
             self.objects: dict[str, bytes] = {}
-            self.delete_count = 0
 
         def put_bytes(self, *, key: str, data: bytes, content_type: str) -> str:
             del content_type
@@ -238,8 +345,7 @@ def test_create_document_persists_fallback_when_commit_and_cleanup_fail(db_sessi
             return self.objects[key]
 
         def delete_object(self, *, key: str) -> None:
-            self.delete_count += 1
-            if self.delete_count == 1:
+            if "/source/" in key:
                 raise RuntimeError("cleanup delete failed")
             self.objects.pop(key, None)
 
@@ -291,7 +397,6 @@ def test_get_document_result_uses_inline_fallback_when_object_backed_field_disap
         def __init__(self) -> None:
             self.objects: dict[str, bytes] = {}
             self.put_count = 0
-            self.delete_count = 0
 
         def put_bytes(self, *, key: str, data: bytes, content_type: str) -> str:
             del content_type
@@ -305,8 +410,7 @@ def test_get_document_result_uses_inline_fallback_when_object_backed_field_disap
             return self.objects[key]
 
         def delete_object(self, *, key: str) -> None:
-            self.delete_count += 1
-            if self.delete_count == 2:
+            if key.endswith("/result/result.md"):
                 raise RuntimeError("cleanup delete failed")
             self.objects.pop(key, None)
 
@@ -502,7 +606,7 @@ def test_get_document_result_reads_payload_from_object_storage(db_session, objec
     ],
 )
 def test_sanitize_filename_neutralizes_path_components(filename: str, expected: str) -> None:
-    assert DocumentService._sanitize_filename(filename) == expected
+    assert sanitize_document_filename(filename) == expected
 
 
 def test_create_document_with_dotdot_filename_uses_safe_key(db_session, tmp_path) -> None:
