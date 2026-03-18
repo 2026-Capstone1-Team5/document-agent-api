@@ -17,6 +17,7 @@ from src.documents.schemas import (
     DocumentSummary,
     ParseResult,
 )
+from src.documents.utils import sanitize_document_filename
 from src.storage.backends import ObjectStorage
 
 logger = logging.getLogger(__name__)
@@ -187,7 +188,7 @@ class DocumentService:
     ) -> DocumentParseResponse:
         document_id = str(uuid4())
         title = Path(filename).stem.replace("_", " ").replace("-", " ").strip() or "Mock Document"
-        safe_filename = self._sanitize_filename(filename)
+        safe_filename = sanitize_document_filename(filename)
         source_object_key = f"documents/{document_id}/source/{safe_filename}"
         markdown_object_key = f"documents/{document_id}/result/result.md"
         canonical_json_object_key = f"documents/{document_id}/result/result.json"
@@ -610,14 +611,3 @@ class DocumentService:
                 if code in {"nosuchkey", "notfound", "404"}:
                     return True
         return False
-
-    @staticmethod
-    def _sanitize_filename(filename: str) -> str:
-        normalized = filename.strip().replace("\\", "/")
-        if not normalized:
-            return "uploaded.bin"
-
-        leaf = normalized.split("/")[-1].strip()
-        if not leaf or leaf in {".", ".."}:
-            return "uploaded.bin"
-        return leaf

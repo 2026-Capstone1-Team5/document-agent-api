@@ -9,6 +9,7 @@ from src.auth.security import hash_password
 from src.documents.exceptions import DocumentNotFoundError, DocumentSourceUnavailableError
 from src.documents.models import DocumentModel
 from src.documents.service import DocumentService
+from src.documents.utils import sanitize_document_filename
 from src.storage.backends import LocalObjectStorage
 
 
@@ -605,7 +606,7 @@ def test_get_document_result_reads_payload_from_object_storage(db_session, objec
     ],
 )
 def test_sanitize_filename_neutralizes_path_components(filename: str, expected: str) -> None:
-    assert DocumentService._sanitize_filename(filename) == expected
+    assert sanitize_document_filename(filename) == expected
 
 
 def test_create_document_with_dotdot_filename_uses_safe_key(db_session, tmp_path) -> None:
