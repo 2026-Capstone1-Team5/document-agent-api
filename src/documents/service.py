@@ -6,7 +6,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload, load_only, undefer
+from sqlalchemy.orm import Session, joinedload, load_only
 
 from src.documents.exceptions import DocumentNotFoundError, DocumentSourceUnavailableError
 from src.documents.models import DocumentModel, DocumentResultModel
@@ -120,8 +120,7 @@ class DocumentService:
                     DocumentModel.source_object_key,
                     DocumentModel.filename,
                     DocumentModel.content_type,
-                ),
-                undefer(DocumentModel.file_data),
+                )
             )
             .where(
                 DocumentModel.id == str(document_id),

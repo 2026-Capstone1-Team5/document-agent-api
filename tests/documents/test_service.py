@@ -116,6 +116,31 @@ def test_get_document_source_reads_payload_from_object_storage(db_session, objec
     assert source.data == b"source-bytes"
 
 
+def test_get_document_source_keeps_file_data_deferred_before_fallback(
+    db_session,
+    object_storage,
+) -> None:
+    class InspectingDocumentService(DocumentService):
+        def _load_source_payload(self, document: DocumentModel) -> bytes:
+            assert "file_data" in inspect(document).unloaded
+            return b"source-bytes"
+
+    owner_user_id = _create_user(db_session)
+    created = DocumentService(session=db_session, storage=object_storage).create_document(
+        owner_user_id=owner_user_id,
+        filename="source.pdf",
+        content_type="application/pdf",
+        file_data=b"source-bytes",
+    )
+
+    source = InspectingDocumentService(
+        session=db_session,
+        storage=object_storage,
+    ).get_document_source(created.document.id, owner_user_id=owner_user_id)
+
+    assert source.data == b"source-bytes"
+
+
 def test_get_document_source_uses_inline_fallback_when_object_backed_source_disappears(
     db_session,
 ) -> None:
