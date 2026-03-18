@@ -157,6 +157,34 @@ def test_document_source_returns_500_when_source_payload_is_unavailable(
     assert response.json()["error"]["code"] == "source_file_unavailable"
 
 
+def test_document_source_returns_404_for_other_users_document(db_session, object_storage) -> None:
+    settings = get_settings()
+    auth_service = AuthService(
+        session=db_session,
+        secret_key=settings.auth_secret_key,
+        access_token_ttl_seconds=settings.auth_access_token_ttl_seconds,
+    )
+    owner_payload = auth_service.register(email="owner2@example.com", password="password123!")
+    other_payload = auth_service.register(email="other2@example.com", password="password123!")
+
+    created = DocumentService(session=db_session, storage=object_storage).create_document(
+        owner_user_id=str(owner_payload.user.id),
+        filename="private.pdf",
+        content_type="application/pdf",
+        file_data=b"private-bytes",
+    )
+
+    app.dependency_overrides[get_db_session] = lambda: db_session
+    app.dependency_overrides[get_object_storage] = lambda: object_storage
+    with TestClient(app, raise_server_exceptions=False) as other_client:
+        other_client.headers.update({"Authorization": f"Bearer {other_payload.access_token}"})
+        response = other_client.get(f"/api/v1/documents/{created.document.id}/source")
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "document_not_found"
+
+
 def test_unknown_document_returns_structured_404(client: TestClient) -> None:
     response = client.get("/api/v1/documents/00000000-0000-0000-0000-000000000001")
 

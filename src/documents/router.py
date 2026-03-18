@@ -15,7 +15,7 @@ from src.documents.schemas import (
     DocumentParseResponse,
     DocumentResponse,
 )
-from src.documents.service import DocumentService
+from src.documents.service import DocumentService, sanitize_filename
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
@@ -97,9 +97,11 @@ def get_document(
         200: {
             "description": "Original source file bytes.",
             "content": {
-                "application/octet-stream": {
-                    "schema": {"type": "string", "format": "binary"},
-                }
+                "application/pdf": {"schema": {"type": "string", "format": "binary"}},
+                "application/x-hwp": {"schema": {"type": "string", "format": "binary"}},
+                "image/png": {"schema": {"type": "string", "format": "binary"}},
+                "image/jpeg": {"schema": {"type": "string", "format": "binary"}},
+                "application/octet-stream": {"schema": {"type": "string", "format": "binary"}},
             },
         }
     },
@@ -238,7 +240,7 @@ def _is_supported_file(*, filename: str, content_type: str | None) -> bool:
 
 
 def _build_content_disposition(*, disposition: str, filename: str) -> str:
-    safe_filename = DocumentService._sanitize_filename(filename)
+    safe_filename = sanitize_filename(filename)
     ascii_fallback = "".join(
         character
         if character.isascii() and character not in {'"', "\\"} and 32 <= ord(character) < 127
