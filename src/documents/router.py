@@ -1,3 +1,5 @@
+from typing import Literal
+from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Query, Response, UploadFile
@@ -7,7 +9,7 @@ from src.auth.dependencies import get_current_document_user
 from src.auth.models import UserModel
 from src.common.errors import ApiError
 from src.documents.dependencies import get_document_service
-from src.documents.exceptions import DocumentNotFoundError
+from src.documents.exceptions import DocumentNotFoundError, DocumentSourceUnavailableError
 from src.documents.schemas import (
     DocumentListResponse,
     DocumentParseResponse,
@@ -86,6 +88,54 @@ def get_document(
             code="document_not_found",
             message=str(exc),
         ) from exc
+
+
+@router.get(
+    "/{document_id}/source",
+    response_class=Response,
+    responses={
+        200: {
+            "description": "Original source file bytes.",
+            "content": {
+                "application/octet-stream": {
+                    "schema": {"type": "string", "format": "binary"},
+                }
+            },
+        }
+    },
+)
+def get_document_source(
+    document_id: UUID,
+    disposition: Literal["inline", "attachment"] = Query(default="inline"),
+    current_user: UserModel = Depends(get_current_document_user),
+    service: DocumentService = Depends(get_document_service),
+) -> Response:
+    try:
+        source = service.get_document_source(document_id, owner_user_id=current_user.id)
+    except DocumentNotFoundError as exc:
+        raise ApiError(
+            status_code=404,
+            code="document_not_found",
+            message=str(exc),
+        ) from exc
+    except DocumentSourceUnavailableError as exc:
+        raise ApiError(
+            status_code=500,
+            code="source_file_unavailable",
+            message=str(exc),
+        ) from exc
+
+    return Response(
+        content=source.data,
+        media_type=source.content_type,
+        headers={
+            "Content-Disposition": _build_content_disposition(
+                disposition=disposition,
+                filename=source.filename,
+            ),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get("/{document_id}/result", response_model=DocumentParseResponse)
@@ -185,3 +235,18 @@ def _is_supported_file(*, filename: str, content_type: str | None) -> bool:
     if content_type and content_type.startswith("image/"):
         return True
     return False
+
+
+def _build_content_disposition(*, disposition: str, filename: str) -> str:
+    safe_filename = DocumentService._sanitize_filename(filename)
+    ascii_fallback = "".join(
+        character
+        if character.isascii() and character not in {'"', "\\"} and 32 <= ord(character) < 127
+        else "_"
+        for character in safe_filename
+    ).strip(" .")
+    if not ascii_fallback:
+        ascii_fallback = "download.bin"
+
+    encoded_filename = quote(safe_filename, safe="")
+    return f"{disposition}; filename=\"{ascii_fallback}\"; filename*=UTF-8''{encoded_filename}"

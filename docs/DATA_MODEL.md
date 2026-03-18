@@ -58,6 +58,7 @@
 - Rules:
   - belongs to one `users` row when owner exists
   - source payload may be stored in object storage via `source_object_key`
+  - source payload may fall back to inline `file_data` when object-storage cleanup is incomplete
 
 ## `document_results`
 

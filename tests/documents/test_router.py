@@ -103,6 +103,60 @@ def test_document_download_rejects_unknown_format(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "unsupported_download_format"
 
 
+def test_document_source_returns_inline_bytes_by_default(client: TestClient) -> None:
+    created = client.post(
+        "/api/v1/documents",
+        files={"file": ("source.pdf", b"%PDF-source", "application/pdf")},
+    ).json()
+    document_id = created["document"]["id"]
+
+    response = client.get(f"/api/v1/documents/{document_id}/source")
+
+    assert response.status_code == 200
+    assert response.content == b"%PDF-source"
+    assert response.headers["content-type"] == "application/pdf"
+    assert response.headers["content-disposition"].startswith("inline;")
+    assert "filename*=UTF-8''source.pdf" in response.headers["content-disposition"]
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_document_source_supports_attachment_disposition(client: TestClient) -> None:
+    created = client.post(
+        "/api/v1/documents",
+        files={"file": ("source.pdf", b"%PDF-source", "application/pdf")},
+    ).json()
+    document_id = created["document"]["id"]
+
+    response = client.get(
+        f"/api/v1/documents/{document_id}/source",
+        params={"disposition": "attachment"},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"].startswith("attachment;")
+
+
+def test_document_source_returns_500_when_source_payload_is_unavailable(
+    client: TestClient,
+) -> None:
+    db_session = app.dependency_overrides[get_db_session]()
+    object_storage = app.dependency_overrides[get_object_storage]()
+    created = client.post(
+        "/api/v1/documents",
+        files={"file": ("source.pdf", b"%PDF-source", "application/pdf")},
+    ).json()
+    stored = db_session.get(DocumentModel, created["document"]["id"])
+    assert stored is not None
+    assert stored.source_object_key is not None
+
+    object_storage._objects.pop(stored.source_object_key, None)  # noqa: SLF001
+
+    response = client.get(f"/api/v1/documents/{created['document']['id']}/source")
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "source_file_unavailable"
+
+
 def test_unknown_document_returns_structured_404(client: TestClient) -> None:
     response = client.get("/api/v1/documents/00000000-0000-0000-0000-000000000001")
 

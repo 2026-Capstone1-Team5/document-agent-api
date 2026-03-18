@@ -1,13 +1,14 @@
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session, joinedload, load_only
+from sqlalchemy.orm import Session, joinedload, load_only, undefer
 
-from src.documents.exceptions import DocumentNotFoundError
+from src.documents.exceptions import DocumentNotFoundError, DocumentSourceUnavailableError
 from src.documents.models import DocumentModel, DocumentResultModel
 from src.documents.schemas import (
     DocumentListResponse,
@@ -19,6 +20,13 @@ from src.documents.schemas import (
 from src.storage.backends import ObjectStorage
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentSourcePayload:
+    filename: str
+    content_type: str
+    data: bytes
 
 
 class DocumentService:
@@ -97,6 +105,38 @@ class DocumentService:
         if document is None:
             raise DocumentNotFoundError(document_id)
         return DocumentResponse(document=self._to_document_summary(document))
+
+    def get_document_source(
+        self,
+        document_id: UUID,
+        *,
+        owner_user_id: str,
+    ) -> DocumentSourcePayload:
+        statement = (
+            select(DocumentModel)
+            .options(
+                load_only(
+                    DocumentModel.id,
+                    DocumentModel.source_object_key,
+                    DocumentModel.filename,
+                    DocumentModel.content_type,
+                ),
+                undefer(DocumentModel.file_data),
+            )
+            .where(
+                DocumentModel.id == str(document_id),
+                DocumentModel.owner_user_id == owner_user_id,
+            )
+        )
+        document = self.session.scalars(statement).first()
+        if document is None:
+            raise DocumentNotFoundError(document_id)
+
+        return DocumentSourcePayload(
+            filename=document.filename,
+            content_type=document.content_type,
+            data=self._load_source_payload(document),
+        )
 
     def get_document_result(
         self,
@@ -347,6 +387,29 @@ class DocumentService:
         if markdown is None or canonical_json is None:
             raise DocumentNotFoundError(UUID(document.id))
         return markdown, canonical_json
+
+    def _load_source_payload(self, document: DocumentModel) -> bytes:
+        if document.source_object_key:
+            try:
+                return self.storage.get_bytes(key=document.source_object_key)
+            except Exception as exc:
+                if document.file_data is None:
+                    logger.warning(
+                        "failed to read source object key=%s with no inline fallback",
+                        document.source_object_key,
+                        exc_info=exc,
+                    )
+                    raise DocumentSourceUnavailableError(UUID(document.id)) from exc
+                logger.warning(
+                    "failed to read source object key=%s, using inline fallback",
+                    document.source_object_key,
+                    exc_info=exc,
+                )
+
+        if document.file_data is not None:
+            return document.file_data
+
+        raise DocumentSourceUnavailableError(UUID(document.id))
 
     def _collect_object_keys(self, document: DocumentModel) -> list[str]:
         keys: list[str] = []

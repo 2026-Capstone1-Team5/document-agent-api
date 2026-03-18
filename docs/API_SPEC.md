@@ -6,6 +6,7 @@
 - Content types:
   - auth: `application/json`
   - document upload: `multipart/form-data`
+  - document source: stored document media type, e.g. `application/pdf`, `image/png`
   - document download: `text/markdown`, `application/json`
 
 ## Authentication
@@ -116,6 +117,21 @@
 - Return document metadata for one owned document.
 - Requires JWT or API key.
 
+### `GET /documents/{document_id}/source?disposition=inline|attachment`
+
+- Return the original uploaded file bytes for one owned document.
+- Requires JWT or API key.
+- Default `disposition` is `inline`.
+- `disposition=inline` is intended for preview embeds such as a PDF viewer.
+- `disposition=attachment` is intended for explicit download UX.
+- Response headers:
+  - `Content-Type`: stored source media type
+  - `Content-Disposition`: `inline` or `attachment` with filename
+  - `X-Content-Type-Options: nosniff`
+- Failure cases:
+  - `404 document_not_found` when the document does not exist or is not owned by the caller
+  - `500 source_file_unavailable` when the document row exists but the original file payload cannot be loaded
+
 ### `GET /documents/{document_id}/result`
 
 - Return stored parse result for one owned document.
@@ -166,3 +182,4 @@
 - `malformed_multipart_request`
 - `document_not_found`
 - `unsupported_download_format`
+- `source_file_unavailable`

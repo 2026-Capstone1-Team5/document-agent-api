@@ -4,6 +4,7 @@
 
 - `document-agent-api`는 Document AI 서비스의 API 레이어다.
 - Web 앱과 MCP 클라이언트가 공통으로 사용하는 문서 업로드, 파싱 결과 조회, 다운로드, 삭제 기능을 제공한다.
+- 문서 원본 preview/download를 위한 안전한 접근 경계도 제공한다.
 - parser 엔진 내부 로직은 이 저장소의 책임이 아니다.
 
 ## Scope
