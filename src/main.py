@@ -1,5 +1,3 @@
-from importlib import import_module
-
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,14 +32,6 @@ app.add_exception_handler(Exception, api_error_handler)
 app.add_exception_handler(RequestValidationError, request_validation_error_handler)
 app.include_router(auth_router)
 app.include_router(documents_router)
-
-try:
-    debug_module = import_module("src.debug.router")
-except ModuleNotFoundError:
-    debug_module = None
-
-if debug_module is not None:
-    app.include_router(debug_module.router)
 
 
 @app.get("/healthz", tags=["system"])

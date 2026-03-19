@@ -675,27 +675,6 @@
         }
       }
     },
-    "/debug/upload": {
-      "get": {
-        "tags": [
-          "debug"
-        ],
-        "summary": "Debug Upload Page",
-        "operationId": "debug_upload_page_debug_upload_get",
-        "responses": {
-          "200": {
-            "description": "Successful Response",
-            "content": {
-              "text/html": {
-                "schema": {
-                  "type": "string"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/healthz": {
       "get": {
         "tags": [
