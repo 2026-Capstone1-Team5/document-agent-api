@@ -110,3 +110,53 @@ def test_worker_runner_marks_job_failed_on_parser_error(
     assert refreshed_job is not None
     assert refreshed_job.status == "failed"
     assert refreshed_job.error_code == "parse_failed"
+
+
+def test_worker_runner_skips_payload_without_job_id(
+    tmp_path,
+    db_session,
+    object_storage,
+) -> None:
+    queue = InMemoryParseJobQueue()
+    queue.enqueue_parse_job(payload={"filename": "demo.pdf"})
+
+    runner = WorkerRunner(
+        session_factory=sessionmaker(
+            bind=db_session.bind,
+            autocommit=False,
+            autoflush=False,
+        ),
+        storage=object_storage,
+        queue=queue,
+        parser=SuccessfulParser(),  # type: ignore[arg-type]
+        temp_root=str(tmp_path),
+    )
+
+    processed = runner.run_once(timeout_seconds=1)
+
+    assert processed is True
+
+
+def test_worker_runner_skips_payload_with_invalid_job_id(
+    tmp_path,
+    db_session,
+    object_storage,
+) -> None:
+    queue = InMemoryParseJobQueue()
+    queue.enqueue_parse_job(payload={"job_id": "not-a-uuid"})
+
+    runner = WorkerRunner(
+        session_factory=sessionmaker(
+            bind=db_session.bind,
+            autocommit=False,
+            autoflush=False,
+        ),
+        storage=object_storage,
+        queue=queue,
+        parser=SuccessfulParser(),  # type: ignore[arg-type]
+        temp_root=str(tmp_path),
+    )
+
+    processed = runner.run_once(timeout_seconds=1)
+
+    assert processed is True

@@ -38,7 +38,17 @@ class WorkerRunner:
         if payload is None:
             return False
 
-        job_id = UUID(str(payload["job_id"]))
+        try:
+            raw_job_id = payload["job_id"]
+        except KeyError:
+            logger.error("received parse job payload without job_id: %r", payload)
+            return True
+
+        try:
+            job_id = UUID(str(raw_job_id))
+        except (TypeError, ValueError) as exc:
+            logger.error("received parse job payload with invalid job_id %r: %s", raw_job_id, exc)
+            return True
 
         with self.session_factory() as session:
             job_service = ParseJobService(session=session, storage=self.storage, queue=self.queue)
