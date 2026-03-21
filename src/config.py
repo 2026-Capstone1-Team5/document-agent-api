@@ -13,6 +13,9 @@ DEFAULT_STORAGE_LOCAL_ROOT = "data/storage"
 DEFAULT_STORAGE_R2_REGION = "auto"
 DEFAULT_QUEUE_BACKEND = "memory"
 DEFAULT_PARSE_JOB_QUEUE_NAME = "document-agent-api:parse-jobs"
+DEFAULT_WORKER_POLL_TIMEOUT_SECONDS = 5
+DEFAULT_DOCUMENT_AI_TIMEOUT_SECONDS = 300
+DEFAULT_WORKER_TEMP_ROOT = "/tmp/document-agent-api-worker"
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -75,6 +78,10 @@ class Settings(BaseSettings):
     queue_backend: str = DEFAULT_QUEUE_BACKEND
     redis_url: str = "redis://127.0.0.1:6379/0"
     parse_job_queue_name: str = DEFAULT_PARSE_JOB_QUEUE_NAME
+    worker_poll_timeout_seconds: int = DEFAULT_WORKER_POLL_TIMEOUT_SECONDS
+    document_ai_timeout_seconds: int = DEFAULT_DOCUMENT_AI_TIMEOUT_SECONDS
+    worker_temp_root: str = DEFAULT_WORKER_TEMP_ROOT
+    document_ai_command: str | None = None
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -157,6 +164,31 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_redis_url(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("document_ai_command", mode="before")
+    @classmethod
+    def normalize_document_ai_command(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("worker_poll_timeout_seconds", "document_ai_timeout_seconds")
+    @classmethod
+    def validate_positive_worker_timeout(cls, value: int) -> int:
+        if value <= 0:
+            msg = "worker timeouts must be greater than 0"
+            raise ValueError(msg)
+        return value
+
+    @field_validator("worker_temp_root")
+    @classmethod
+    def validate_worker_temp_root(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "worker_temp_root must not be empty"
+            raise ValueError(msg)
+        return normalized
 
     @model_validator(mode="after")
     def validate_storage_requirements(self) -> "Settings":

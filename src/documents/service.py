@@ -290,6 +290,65 @@ class DocumentService:
             canonical_json=canonical_json_content,
         )
 
+    def create_document_from_parse_result(
+        self,
+        *,
+        owner_user_id: str,
+        source_object_key: str,
+        filename: str,
+        content_type: str,
+        markdown_content: str,
+        canonical_json_content: dict[str, Any],
+    ) -> DocumentParseResponse:
+        document_id = str(uuid4())
+        markdown_object_key = f"documents/{document_id}/result/result.md"
+        canonical_json_object_key = f"documents/{document_id}/result/result.json"
+        uploaded_keys: list[str] = []
+
+        try:
+            self.storage.put_bytes(
+                key=markdown_object_key,
+                data=markdown_content.encode("utf-8"),
+                content_type="text/markdown",
+            )
+            uploaded_keys.append(markdown_object_key)
+            self.storage.put_bytes(
+                key=canonical_json_object_key,
+                data=json.dumps(canonical_json_content, ensure_ascii=False).encode("utf-8"),
+                content_type="application/json",
+            )
+            uploaded_keys.append(canonical_json_object_key)
+
+            document = DocumentModel(
+                id=document_id,
+                owner_user_id=owner_user_id,
+                source_object_key=source_object_key,
+                filename=filename,
+                content_type=content_type,
+                file_data=None,
+            )
+            document.result = DocumentResultModel(
+                document_id=document_id,
+                markdown=None,
+                canonical_json=None,
+                markdown_object_key=markdown_object_key,
+                canonical_json_object_key=canonical_json_object_key,
+            )
+            self.session.add(document)
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            self._delete_objects_best_effort(uploaded_keys, retries=3)
+            raise
+
+        self.session.refresh(document)
+        self.session.refresh(document, attribute_names=["result"])
+        return self._to_document_parse_response(
+            document,
+            markdown=markdown_content,
+            canonical_json=canonical_json_content,
+        )
+
     def delete_document(self, document_id: UUID, *, owner_user_id: str) -> None:
         statement = select(DocumentModel).where(
             DocumentModel.id == str(document_id),
