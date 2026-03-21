@@ -4,6 +4,7 @@ import json
 import logging
 import socket
 import ssl
+import time
 from typing import Any, Protocol
 from urllib.parse import unquote, urlparse
 
@@ -24,7 +25,7 @@ class InMemoryParseJobQueue:
         self.messages.append(payload)
 
     def dequeue_parse_job(self, *, timeout_seconds: int) -> dict[str, Any] | None:
-        del timeout_seconds
+        time.sleep(timeout_seconds)
         if not self.messages:
             return None
         return self.messages.pop(0)
@@ -151,5 +152,5 @@ class LoggingParseJobQueue:
         logger.info("queued parse job payload=%s", payload)
 
     def dequeue_parse_job(self, *, timeout_seconds: int) -> dict[str, Any] | None:
-        del timeout_seconds
+        time.sleep(timeout_seconds)
         return None

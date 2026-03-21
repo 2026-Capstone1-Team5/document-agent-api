@@ -44,3 +44,15 @@ def test_dequeue_parse_job_uses_blocking_read_timeout_grace() -> None:
         queue.dequeue_parse_job(timeout_seconds=5)
 
     fake_socket.settimeout.assert_called_with(10)
+
+
+def test_in_memory_queue_waits_for_timeout_when_empty() -> None:
+    from src.queueing.backends import InMemoryParseJobQueue
+
+    queue = InMemoryParseJobQueue()
+
+    with patch("src.queueing.backends.time.sleep") as sleep:
+        payload = queue.dequeue_parse_job(timeout_seconds=3)
+
+    assert payload is None
+    sleep.assert_called_once_with(3)
