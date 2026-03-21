@@ -31,6 +31,9 @@ class InMemoryParseJobQueue:
 
 
 class RedisParseJobQueue:
+    _CONNECT_TIMEOUT_SECONDS = 5
+    _BLOCKING_READ_GRACE_SECONDS = 5
+
     def __init__(self, *, redis_url: str, queue_name: str) -> None:
         self.redis_url = redis_url
         self.queue_name = queue_name
@@ -40,7 +43,12 @@ class RedisParseJobQueue:
         self._send_command("RPUSH", self.queue_name, serialized)
 
     def dequeue_parse_job(self, *, timeout_seconds: int) -> dict[str, Any] | None:
-        response = self._send_command("BLPOP", self.queue_name, str(timeout_seconds))
+        response = self._send_command(
+            "BLPOP",
+            self.queue_name,
+            str(timeout_seconds),
+            read_timeout_seconds=timeout_seconds + self._BLOCKING_READ_GRACE_SECONDS,
+        )
         if response is None:
             return None
         if not isinstance(response, list) or len(response) != 2:
@@ -52,7 +60,7 @@ class RedisParseJobQueue:
             raise RuntimeError(msg)
         return json.loads(serialized)
 
-    def _send_command(self, *parts: str) -> Any:
+    def _send_command(self, *parts: str, read_timeout_seconds: int | None = None) -> Any:
         parsed = urlparse(self.redis_url)
         if parsed.scheme not in {"redis", "rediss"}:
             msg = "redis_url must use redis:// or rediss://"
@@ -64,13 +72,17 @@ class RedisParseJobQueue:
         password = unquote(parsed.password) if parsed.password else None
         database = parsed.path.lstrip("/") or "0"
 
-        with socket.create_connection((host, port), timeout=5) as base_sock:
+        with socket.create_connection(
+            (host, port),
+            timeout=self._CONNECT_TIMEOUT_SECONDS,
+        ) as base_sock:
             sock: socket.socket
             if parsed.scheme == "rediss":
                 context = ssl.create_default_context()
                 sock = context.wrap_socket(base_sock, server_hostname=host)
             else:
                 sock = base_sock
+            sock.settimeout(read_timeout_seconds)
             stream = sock.makefile("rb")
 
             auth_parts = self._auth_parts(username=username, password=password)
