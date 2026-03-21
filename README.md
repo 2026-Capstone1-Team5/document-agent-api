@@ -4,10 +4,11 @@
 
 It is responsible for:
 - document upload
-- parsing execution
+- parse job creation
 - result retrieval
 - download and deletion APIs
 - object storage persistence for source/result payloads
+- queue-based async parse orchestration
 
 This repository serves the Web app and can be consumed by a separate MCP repository. It does not implement local OCR or VLM parser internals.
 
@@ -80,6 +81,27 @@ export STORAGE_R2_SECRET_ACCESS_KEY='...'
 export STORAGE_R2_REGION='auto'
 ```
 
+Set queue configuration:
+
+```bash
+# local development default
+export QUEUE_BACKEND='memory'
+
+# Railway / production Redis queue
+export QUEUE_BACKEND='redis'
+export REDIS_URL='redis://default:password@host:6379/0'
+export PARSE_JOB_QUEUE_NAME='document-agent-api:parse-jobs'
+```
+
+For Railway production, set `QUEUE_BACKEND=redis` and provide the service `REDIS_URL`.
+
+Current upload behavior:
+
+- `POST /api/v1/documents` creates a parse job and returns `202 Accepted`
+- the API stores the source payload and enqueues parse work
+- a worker is expected to consume the queue and later create `documents` / `document_results`
+- supported upload families still follow the current router rules: PDF, HWP/HWPX, and supported image types
+
 Apply database migrations:
 
 ```bash
@@ -134,6 +156,41 @@ curl http://127.0.0.1:8000/api/v1/documents \
 
 curl http://127.0.0.1:8000/api/v1/documents \
   -H 'Authorization: Bearer paste-issued-api-key'
+```
+
+Document upload example:
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/documents \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}" \
+  -F "file=@/absolute/path/to/sample.pdf"
+```
+
+The upload response now returns a parse job:
+
+```json
+{
+  "job": {
+    "id": "uuid",
+    "filename": "sample.pdf",
+    "contentType": "application/pdf",
+    "status": "queued",
+    "documentId": null,
+    "errorCode": null,
+    "errorMessage": null,
+    "createdAt": "2026-03-21T00:00:00Z",
+    "updatedAt": "2026-03-21T00:00:00Z",
+    "startedAt": null,
+    "finishedAt": null
+  }
+}
+```
+
+Query job status:
+
+```bash
+curl http://127.0.0.1:8000/api/v1/parse-jobs/<job-id> \
+  -H "Authorization: Bearer ${ACCESS_TOKEN}"
 ```
 
 ## Quality Checks

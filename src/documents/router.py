@@ -17,6 +17,10 @@ from src.documents.schemas import (
 )
 from src.documents.service import DocumentService
 from src.documents.utils import sanitize_document_filename
+from src.parse_jobs.dependencies import get_parse_job_service
+from src.parse_jobs.exceptions import ParseJobEnqueueError
+from src.parse_jobs.schemas import ParseJobResponse
+from src.parse_jobs.service import ParseJobService
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
@@ -45,12 +49,12 @@ SOURCE_MEDIA_TYPES_BY_CONTENT_TYPE = {
 }
 
 
-@router.post("", response_model=DocumentParseResponse, status_code=201)
+@router.post("", response_model=ParseJobResponse, status_code=202)
 async def create_document(
     file: UploadFile = File(...),
     current_user: UserModel = Depends(get_current_document_user),
-    service: DocumentService = Depends(get_document_service),
-) -> DocumentParseResponse:
+    service: ParseJobService = Depends(get_parse_job_service),
+) -> ParseJobResponse:
     filename = file.filename or ""
     if not filename.strip():
         raise ApiError(
@@ -75,12 +79,19 @@ async def create_document(
             details={"filename": filename},
         )
 
-    return service.create_document(
-        owner_user_id=current_user.id,
-        filename=filename,
-        content_type=file.content_type or "application/octet-stream",
-        file_data=file_bytes,
-    )
+    try:
+        return service.create_job(
+            owner_user_id=current_user.id,
+            filename=filename,
+            content_type=file.content_type or "application/octet-stream",
+            file_data=file_bytes,
+        )
+    except ParseJobEnqueueError as exc:
+        raise ApiError(
+            status_code=500,
+            code="parse_job_enqueue_failed",
+            message=str(exc),
+        ) from exc
 
 
 @router.get("", response_model=DocumentListResponse)

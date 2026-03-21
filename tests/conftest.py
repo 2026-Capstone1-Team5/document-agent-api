@@ -17,6 +17,7 @@ if str(PROJECT_ROOT) not in sys.path:
 from src.auth import models as auth_models  # noqa: F401
 from src.database import Base
 from src.documents import models  # noqa: F401
+from src.parse_jobs import models as parse_job_models  # noqa: F401
 
 
 class InMemoryObjectStorage:

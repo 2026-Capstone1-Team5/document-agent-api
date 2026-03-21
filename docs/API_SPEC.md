@@ -96,12 +96,25 @@
 
 ### `POST /documents`
 
-- Upload a supported file and synchronously persist a parsed document result.
+- Upload a supported file, create a parse job, and enqueue async parsing work.
 - Supported file families:
   - PDF
   - HWP/HWPX
   - image formats accepted by current router rules
 - Requires JWT or API key.
+- Returns `202 Accepted`.
+- Response fields:
+  - `job.id`
+  - `job.filename`
+  - `job.contentType`
+  - `job.status`
+  - `job.documentId`
+  - `job.errorCode`
+  - `job.errorMessage`
+  - `job.createdAt`
+  - `job.updatedAt`
+  - `job.startedAt`
+  - `job.finishedAt`
 
 ### `GET /documents`
 
@@ -149,6 +162,19 @@
 - Delete one owned document and associated result.
 - Requires JWT or API key.
 
+## Parse Job Endpoints
+
+### `GET /parse-jobs/{job_id}`
+
+- Return one owned parse job.
+- Requires JWT or API key.
+- Status values:
+  - `queued`
+  - `processing`
+  - `succeeded`
+  - `failed`
+- `documentId` is `null` until the parse job succeeds and creates a document.
+
 ## Error Shape
 
 - All structured API errors use:
@@ -185,3 +211,5 @@
 - `document_not_found`
 - `unsupported_download_format`
 - `source_file_unavailable`
+- `parse_job_not_found`
+- `parse_job_enqueue_failed`

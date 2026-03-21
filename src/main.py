@@ -10,6 +10,7 @@ from src.common.exception_handlers import (
 )
 from src.config import get_settings
 from src.documents.router import router as documents_router
+from src.parse_jobs.router import router as parse_jobs_router
 
 settings = get_settings()
 
@@ -32,6 +33,7 @@ app.add_exception_handler(Exception, api_error_handler)
 app.add_exception_handler(RequestValidationError, request_validation_error_handler)
 app.include_router(auth_router)
 app.include_router(documents_router)
+app.include_router(parse_jobs_router)
 
 
 @app.get("/healthz", tags=["system"])
