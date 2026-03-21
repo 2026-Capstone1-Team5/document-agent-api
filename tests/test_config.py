@@ -28,3 +28,17 @@ def test_storage_r2_region_rejects_whitespace() -> None:
         Settings(auth_secret_key="secret", storage_r2_region="   ")
 
     assert "storage_r2_region must not be empty" in str(exc_info.value)
+
+
+def test_queue_backend_rejects_unknown_value() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(auth_secret_key="secret", queue_backend="rabbitmq")
+
+    assert "queue_backend must be one of" in str(exc_info.value)
+
+
+def test_parse_job_queue_name_rejects_whitespace() -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        Settings(auth_secret_key="secret", parse_job_queue_name="   ")
+
+    assert "queue settings must not be empty" in str(exc_info.value)
