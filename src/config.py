@@ -11,6 +11,8 @@ DEFAULT_AUTH_ACCESS_TOKEN_TTL_SECONDS = 1800
 DEFAULT_STORAGE_BACKEND = "local"
 DEFAULT_STORAGE_LOCAL_ROOT = "data/storage"
 DEFAULT_STORAGE_R2_REGION = "auto"
+DEFAULT_QUEUE_BACKEND = "memory"
+DEFAULT_PARSE_JOB_QUEUE_NAME = "document-agent-api:parse-jobs"
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -70,6 +72,9 @@ class Settings(BaseSettings):
     storage_r2_access_key_id: str | None = None
     storage_r2_secret_access_key: str | None = None
     storage_r2_region: str = DEFAULT_STORAGE_R2_REGION
+    queue_backend: str = DEFAULT_QUEUE_BACKEND
+    redis_url: str = "redis://127.0.0.1:6379/0"
+    parse_job_queue_name: str = DEFAULT_PARSE_JOB_QUEUE_NAME
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -130,6 +135,24 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         return normalized
 
+    @field_validator("queue_backend")
+    @classmethod
+    def validate_queue_backend(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"memory", "redis", "logging"}:
+            msg = "queue_backend must be one of: memory, redis, logging"
+            raise ValueError(msg)
+        return normalized
+
+    @field_validator("redis_url", "parse_job_queue_name")
+    @classmethod
+    def validate_non_empty_queue_string(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "queue settings must not be empty"
+            raise ValueError(msg)
+        return normalized
+
     @model_validator(mode="after")
     def validate_storage_requirements(self) -> "Settings":
         if self.storage_backend == "r2":
@@ -147,6 +170,10 @@ class Settings(BaseSettings):
                 joined = ", ".join(missing)
                 msg = f"Missing required R2 settings: {joined}"
                 raise ValueError(msg)
+
+        if self.queue_backend == "redis" and not self.redis_url:
+            msg = "redis_url is required when queue_backend=redis"
+            raise ValueError(msg)
 
         return self
 
