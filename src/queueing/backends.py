@@ -39,6 +39,7 @@ class RedisParseJobQueue:
 
         host = parsed.hostname or "127.0.0.1"
         port = parsed.port or 6379
+        username = unquote(parsed.username) if parsed.username else None
         password = unquote(parsed.password) if parsed.password else None
         database = parsed.path.lstrip("/") or "0"
 
@@ -50,8 +51,9 @@ class RedisParseJobQueue:
             else:
                 sock = base_sock
 
-            if password:
-                self._write_command(sock, "AUTH", password)
+            auth_parts = self._auth_parts(username=username, password=password)
+            if auth_parts is not None:
+                self._write_command(sock, *auth_parts)
                 self._read_response(sock)
             if database != "0":
                 self._write_command(sock, "SELECT", database)
@@ -81,6 +83,14 @@ class RedisParseJobQueue:
             msg = response.decode("utf-8", errors="replace").strip()
             raise RuntimeError(msg)
         return response
+
+    @staticmethod
+    def _auth_parts(*, username: str | None, password: str | None) -> tuple[str, ...] | None:
+        if not password:
+            return None
+        if username:
+            return ("AUTH", username, password)
+        return ("AUTH", password)
 
 
 class LoggingParseJobQueue:

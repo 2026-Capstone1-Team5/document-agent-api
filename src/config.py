@@ -144,7 +144,7 @@ class Settings(BaseSettings):
             raise ValueError(msg)
         return normalized
 
-    @field_validator("redis_url", "parse_job_queue_name")
+    @field_validator("parse_job_queue_name")
     @classmethod
     def validate_non_empty_queue_string(cls, value: str) -> str:
         normalized = value.strip()
@@ -152,6 +152,11 @@ class Settings(BaseSettings):
             msg = "queue settings must not be empty"
             raise ValueError(msg)
         return normalized
+
+    @field_validator("redis_url")
+    @classmethod
+    def normalize_redis_url(cls, value: str) -> str:
+        return value.strip()
 
     @model_validator(mode="after")
     def validate_storage_requirements(self) -> "Settings":
