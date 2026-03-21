@@ -84,18 +84,17 @@ class RedisParseJobQueue:
             else:
                 sock = base_sock
             sock.settimeout(read_timeout_seconds)
-            stream = sock.makefile("rb")
+            with sock.makefile("rb") as stream:
+                auth_parts = self._auth_parts(username=username, password=password)
+                if auth_parts is not None:
+                    self._write_command(sock, *auth_parts)
+                    self._read_response(stream)
+                if database != "0":
+                    self._write_command(sock, "SELECT", database)
+                    self._read_response(stream)
 
-            auth_parts = self._auth_parts(username=username, password=password)
-            if auth_parts is not None:
-                self._write_command(sock, *auth_parts)
-                self._read_response(stream)
-            if database != "0":
-                self._write_command(sock, "SELECT", database)
-                self._read_response(stream)
-
-            self._write_command(sock, *parts)
-            return self._read_response(stream)
+                self._write_command(sock, *parts)
+                return self._read_response(stream)
 
     @staticmethod
     def _write_command(sock: socket.socket, *parts: str) -> None:
