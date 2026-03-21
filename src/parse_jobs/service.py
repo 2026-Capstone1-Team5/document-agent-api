@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.documents.utils import sanitize_document_filename
 from src.parse_jobs.exceptions import ParseJobEnqueueError, ParseJobNotFoundError
 from src.parse_jobs.models import ParseJobModel
 from src.parse_jobs.schemas import ParseJobResponse, ParseJobSummary
@@ -37,26 +37,28 @@ class ParseJobService:
         file_data: bytes,
     ) -> ParseJobResponse:
         job_id = str(uuid4())
-        safe_filename = Path(filename).name
+        safe_filename = sanitize_document_filename(filename)
         source_object_key = f"parse-jobs/{job_id}/source/{safe_filename}"
+        job_persisted = False
 
-        self.storage.put_bytes(
-            key=source_object_key,
-            data=file_data,
-            content_type=content_type,
-        )
-
-        job = ParseJobModel(
-            id=job_id,
-            owner_user_id=owner_user_id,
-            source_object_key=source_object_key,
-            filename=filename,
-            content_type=content_type,
-            status="queued",
-        )
         try:
+            self.storage.put_bytes(
+                key=source_object_key,
+                data=file_data,
+                content_type=content_type,
+            )
+
+            job = ParseJobModel(
+                id=job_id,
+                owner_user_id=owner_user_id,
+                source_object_key=source_object_key,
+                filename=filename,
+                content_type=content_type,
+                status="queued",
+            )
             self.session.add(job)
             self.session.commit()
+            job_persisted = True
             self.queue.enqueue_parse_job(
                 payload={
                     "job_id": job_id,
@@ -68,7 +70,13 @@ class ParseJobService:
             )
         except Exception as exc:
             self.session.rollback()
-            self._mark_enqueue_failure(job_id=job_id)
+            if not job_persisted:
+                self._cleanup_source_object_best_effort(
+                    job_id=job_id,
+                    source_object_key=source_object_key,
+                )
+            else:
+                self._mark_enqueue_failure(job_id=job_id)
             logger.exception("failed to enqueue parse job id=%s", job_id)
             raise ParseJobEnqueueError(UUID(job_id)) from exc
 
@@ -95,6 +103,17 @@ class ParseJobService:
         self.session.add(job)
         self.session.commit()
 
+    def _cleanup_source_object_best_effort(self, *, job_id: str, source_object_key: str) -> None:
+        try:
+            self.storage.delete_object(key=source_object_key)
+        except Exception:
+            logger.warning(
+                "failed to delete source object for parse job id=%s key=%s",
+                job_id,
+                source_object_key,
+                exc_info=True,
+            )
+
     @staticmethod
     def _to_summary(job: ParseJobModel) -> ParseJobSummary:
         return ParseJobSummary(
@@ -110,4 +129,3 @@ class ParseJobService:
             startedAt=job.started_at,
             finishedAt=job.finished_at,
         )
-
