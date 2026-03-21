@@ -4,6 +4,7 @@ import json
 import logging
 import socket
 import ssl
+import time
 from typing import Any, Protocol
 from urllib.parse import unquote, urlparse
 
@@ -13,6 +14,8 @@ logger = logging.getLogger(__name__)
 class ParseJobQueue(Protocol):
     def enqueue_parse_job(self, *, payload: dict[str, Any]) -> None: ...
 
+    def dequeue_parse_job(self, *, timeout_seconds: int) -> dict[str, Any] | None: ...
+
 
 class InMemoryParseJobQueue:
     def __init__(self) -> None:
@@ -21,8 +24,17 @@ class InMemoryParseJobQueue:
     def enqueue_parse_job(self, *, payload: dict[str, Any]) -> None:
         self.messages.append(payload)
 
+    def dequeue_parse_job(self, *, timeout_seconds: int) -> dict[str, Any] | None:
+        time.sleep(timeout_seconds)
+        if not self.messages:
+            return None
+        return self.messages.pop(0)
+
 
 class RedisParseJobQueue:
+    _CONNECT_TIMEOUT_SECONDS = 5
+    _BLOCKING_READ_GRACE_SECONDS = 5
+
     def __init__(self, *, redis_url: str, queue_name: str) -> None:
         self.redis_url = redis_url
         self.queue_name = queue_name
@@ -31,7 +43,25 @@ class RedisParseJobQueue:
         serialized = json.dumps(payload, ensure_ascii=False)
         self._send_command("RPUSH", self.queue_name, serialized)
 
-    def _send_command(self, *parts: str) -> None:
+    def dequeue_parse_job(self, *, timeout_seconds: int) -> dict[str, Any] | None:
+        response = self._send_command(
+            "BLPOP",
+            self.queue_name,
+            str(timeout_seconds),
+            read_timeout_seconds=timeout_seconds + self._BLOCKING_READ_GRACE_SECONDS,
+        )
+        if response is None:
+            return None
+        if not isinstance(response, list) or len(response) != 2:
+            msg = "unexpected BLPOP response from Redis"
+            raise RuntimeError(msg)
+        _, serialized = response
+        if not isinstance(serialized, str):
+            msg = "unexpected payload type from Redis queue"
+            raise RuntimeError(msg)
+        return json.loads(serialized)
+
+    def _send_command(self, *parts: str, read_timeout_seconds: int | None = None) -> Any:
         parsed = urlparse(self.redis_url)
         if parsed.scheme not in {"redis", "rediss"}:
             msg = "redis_url must use redis:// or rediss://"
@@ -43,24 +73,28 @@ class RedisParseJobQueue:
         password = unquote(parsed.password) if parsed.password else None
         database = parsed.path.lstrip("/") or "0"
 
-        with socket.create_connection((host, port), timeout=5) as base_sock:
+        with socket.create_connection(
+            (host, port),
+            timeout=self._CONNECT_TIMEOUT_SECONDS,
+        ) as base_sock:
             sock: socket.socket
             if parsed.scheme == "rediss":
                 context = ssl.create_default_context()
                 sock = context.wrap_socket(base_sock, server_hostname=host)
             else:
                 sock = base_sock
+            sock.settimeout(read_timeout_seconds)
+            with sock.makefile("rb") as stream:
+                auth_parts = self._auth_parts(username=username, password=password)
+                if auth_parts is not None:
+                    self._write_command(sock, *auth_parts)
+                    self._read_response(stream)
+                if database != "0":
+                    self._write_command(sock, "SELECT", database)
+                    self._read_response(stream)
 
-            auth_parts = self._auth_parts(username=username, password=password)
-            if auth_parts is not None:
-                self._write_command(sock, *auth_parts)
-                self._read_response(sock)
-            if database != "0":
-                self._write_command(sock, "SELECT", database)
-                self._read_response(sock)
-
-            self._write_command(sock, *parts)
-            self._read_response(sock)
+                self._write_command(sock, *parts)
+                return self._read_response(stream)
 
     @staticmethod
     def _write_command(sock: socket.socket, *parts: str) -> None:
@@ -72,17 +106,36 @@ class RedisParseJobQueue:
         sock.sendall(b"".join(chunks))
 
     @staticmethod
-    def _read_response(sock: socket.socket) -> bytes:
-        response = b""
-        while not response.endswith(b"\r\n"):
-            chunk = sock.recv(4096)
-            if not chunk:
-                break
-            response += chunk
-        if response.startswith(b"-"):
-            msg = response.decode("utf-8", errors="replace").strip()
+    def _read_response(stream) -> Any:  # type: ignore[no-untyped-def]
+        line = stream.readline()
+        if not line:
+            msg = "connection closed while reading Redis response"
             raise RuntimeError(msg)
-        return response
+
+        prefix = line[:1]
+        payload = line[1:-2]
+        if prefix == b"+":
+            return payload.decode("utf-8")
+        if prefix == b"-":
+            msg = payload.decode("utf-8", errors="replace")
+            raise RuntimeError(msg)
+        if prefix == b":":
+            return int(payload)
+        if prefix == b"$":
+            length = int(payload)
+            if length == -1:
+                return None
+            data = stream.read(length)
+            stream.read(2)
+            return data.decode("utf-8")
+        if prefix == b"*":
+            count = int(payload)
+            if count == -1:
+                return None
+            return [RedisParseJobQueue._read_response(stream) for _ in range(count)]
+
+        msg = "unsupported Redis RESP response"
+        raise RuntimeError(msg)
 
     @staticmethod
     def _auth_parts(*, username: str | None, password: str | None) -> tuple[str, ...] | None:
@@ -96,3 +149,7 @@ class RedisParseJobQueue:
 class LoggingParseJobQueue:
     def enqueue_parse_job(self, *, payload: dict[str, Any]) -> None:
         logger.info("queued parse job payload=%s", payload)
+
+    def dequeue_parse_job(self, *, timeout_seconds: int) -> dict[str, Any] | None:
+        time.sleep(timeout_seconds)
+        return None

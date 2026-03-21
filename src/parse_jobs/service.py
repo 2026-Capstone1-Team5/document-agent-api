@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -14,6 +16,15 @@ from src.queueing.backends import ParseJobQueue
 from src.storage.backends import ObjectStorage
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class ParseJobWorkItem:
+    id: UUID
+    owner_user_id: str
+    source_object_key: str
+    filename: str
+    content_type: str
 
 
 class ParseJobService:
@@ -92,6 +103,57 @@ class ParseJobService:
         if job is None:
             raise ParseJobNotFoundError(job_id)
         return ParseJobResponse(job=self._to_summary(job))
+
+    def start_job(self, job_id: UUID) -> ParseJobWorkItem | None:
+        job = self.session.get(ParseJobModel, str(job_id))
+        if job is None or job.owner_user_id is None:
+            return None
+        if job.status != "queued":
+            return None
+
+        now = datetime.now(UTC)
+        job.status = "processing"
+        job.started_at = now
+        job.updated_at = now
+        job.error_code = None
+        job.error_message = None
+        self.session.add(job)
+        self.session.commit()
+        self.session.refresh(job)
+        return ParseJobWorkItem(
+            id=UUID(job.id),
+            owner_user_id=job.owner_user_id,
+            source_object_key=job.source_object_key,
+            filename=job.filename,
+            content_type=job.content_type,
+        )
+
+    def complete_job(self, *, job_id: UUID, document_id: UUID) -> None:
+        job = self.session.get(ParseJobModel, str(job_id))
+        if job is None:
+            raise ParseJobNotFoundError(job_id)
+        now = datetime.now(UTC)
+        job.status = "succeeded"
+        job.document_id = str(document_id)
+        job.finished_at = now
+        job.updated_at = now
+        job.error_code = None
+        job.error_message = None
+        self.session.add(job)
+        self.session.commit()
+
+    def fail_job(self, *, job_id: UUID, error_code: str, error_message: str) -> None:
+        job = self.session.get(ParseJobModel, str(job_id))
+        if job is None:
+            raise ParseJobNotFoundError(job_id)
+        now = datetime.now(UTC)
+        job.status = "failed"
+        job.error_code = error_code
+        job.error_message = error_message
+        job.finished_at = now
+        job.updated_at = now
+        self.session.add(job)
+        self.session.commit()
 
     def _mark_enqueue_failure(self, *, job_id: str) -> None:
         job = self.session.get(ParseJobModel, job_id)
