@@ -1,5 +1,6 @@
 from src.config import get_settings
 from src.database import SessionLocal
+from src.model_registry import load_model_registry
 from src.queueing.dependencies import get_parse_job_queue
 from src.storage.dependencies import get_object_storage
 from src.worker.parser import DocumentAiCliParser, PdftotextParser
@@ -26,6 +27,7 @@ def _build_parser():
 
 def main() -> None:
     settings = get_settings()
+    load_model_registry()
     runner = WorkerRunner(
         session_factory=SessionLocal,
         storage=get_object_storage(),

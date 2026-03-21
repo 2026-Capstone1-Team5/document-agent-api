@@ -10,9 +10,11 @@ from src.common.exception_handlers import (
 )
 from src.config import get_settings
 from src.documents.router import router as documents_router
+from src.model_registry import load_model_registry
 from src.parse_jobs.router import router as parse_jobs_router
 
 settings = get_settings()
+load_model_registry()
 
 app = FastAPI(
     title="document-agent-api",
