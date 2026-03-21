@@ -16,6 +16,8 @@ DEFAULT_PARSE_JOB_QUEUE_NAME = "document-agent-api:parse-jobs"
 DEFAULT_WORKER_POLL_TIMEOUT_SECONDS = 5
 DEFAULT_DOCUMENT_AI_TIMEOUT_SECONDS = 300
 DEFAULT_WORKER_TEMP_ROOT = "/tmp/document-agent-api-worker"
+DEFAULT_PARSER_BACKEND = "pdftotext"
+DEFAULT_PDFTOTEXT_COMMAND = "pdftotext"
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -81,6 +83,8 @@ class Settings(BaseSettings):
     worker_poll_timeout_seconds: int = DEFAULT_WORKER_POLL_TIMEOUT_SECONDS
     document_ai_timeout_seconds: int = DEFAULT_DOCUMENT_AI_TIMEOUT_SECONDS
     worker_temp_root: str = DEFAULT_WORKER_TEMP_ROOT
+    parser_backend: str = DEFAULT_PARSER_BACKEND
+    pdftotext_command: str = DEFAULT_PDFTOTEXT_COMMAND
     document_ai_command: str | None = None
 
     @field_validator("database_url", mode="before")
@@ -173,6 +177,24 @@ class Settings(BaseSettings):
         normalized = value.strip()
         return normalized or None
 
+    @field_validator("parser_backend")
+    @classmethod
+    def validate_parser_backend(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"pdftotext", "document_ai"}:
+            msg = "parser_backend must be one of: pdftotext, document_ai"
+            raise ValueError(msg)
+        return normalized
+
+    @field_validator("pdftotext_command")
+    @classmethod
+    def validate_pdftotext_command(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            msg = "pdftotext_command must not be empty"
+            raise ValueError(msg)
+        return normalized
+
     @field_validator("worker_poll_timeout_seconds", "document_ai_timeout_seconds")
     @classmethod
     def validate_positive_worker_timeout(cls, value: int) -> int:
@@ -210,6 +232,10 @@ class Settings(BaseSettings):
 
         if self.queue_backend == "redis" and not self.redis_url:
             msg = "redis_url is required when queue_backend=redis"
+            raise ValueError(msg)
+
+        if self.parser_backend == "document_ai" and not self.document_ai_command:
+            msg = "document_ai_command is required when parser_backend=document_ai"
             raise ValueError(msg)
 
         return self

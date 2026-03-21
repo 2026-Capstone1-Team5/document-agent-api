@@ -11,7 +11,7 @@ from src.documents.service import DocumentService
 from src.parse_jobs.service import ParseJobService
 from src.queueing.backends import ParseJobQueue
 from src.storage.backends import ObjectStorage
-from src.worker.parser import DocumentAiCliParser, WorkerParseError
+from src.worker.parser import WorkerParseError, WorkerParser
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ class WorkerRunner:
         session_factory: sessionmaker[Session],
         storage: ObjectStorage,
         queue: ParseJobQueue,
-        parser: DocumentAiCliParser,
+        parser: WorkerParser,
         temp_root: str,
     ) -> None:
         self.session_factory = session_factory

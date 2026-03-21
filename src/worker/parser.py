@@ -5,6 +5,7 @@ import shlex
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Protocol
 
 
 class WorkerParseError(Exception):
@@ -15,6 +16,10 @@ class WorkerParseError(Exception):
 class ParsedDocumentPayload:
     markdown: str
     canonical_json: dict
+
+
+class WorkerParser(Protocol):
+    def parse(self, *, input_path: Path, output_dir: Path) -> ParsedDocumentPayload: ...
 
 
 class DocumentAiCliParser:
@@ -74,3 +79,42 @@ class DocumentAiCliParser:
             if candidate.exists():
                 return candidate
         return None
+
+
+class PdftotextParser:
+    def __init__(self, *, command: str, timeout_seconds: int) -> None:
+        self.command = command
+        self.timeout_seconds = timeout_seconds
+
+    def parse(self, *, input_path: Path, output_dir: Path) -> ParsedDocumentPayload:
+        del output_dir
+        completed = subprocess.run(
+            [self.command, "-layout", str(input_path), "-"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=self.timeout_seconds,
+        )
+        if completed.returncode != 0:
+            stderr = completed.stderr.strip() or completed.stdout.strip() or "pdftotext failed"
+            raise WorkerParseError(stderr)
+
+        text = completed.stdout.strip()
+        if not text:
+            msg = "pdftotext returned no extractable text"
+            raise WorkerParseError(msg)
+
+        markdown = text
+        canonical_json = {
+            "document": {
+                "source": "pdftotext",
+                "filename": input_path.name,
+            },
+            "blocks": [
+                {
+                    "type": "text",
+                    "text": text,
+                }
+            ],
+        }
+        return ParsedDocumentPayload(markdown=markdown, canonical_json=canonical_json)
