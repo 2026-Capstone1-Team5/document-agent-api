@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from src.documents.service import DocumentService
 from src.parse_jobs.service import ParseJobService
+from src.parser_backends import ParserBackend
 from src.queueing.backends import ParseJobQueue
 from src.storage.backends import ObjectStorage
 from src.worker.parser import WorkerParseError, WorkerParser
@@ -23,13 +24,13 @@ class WorkerRunner:
         session_factory: sessionmaker[Session],
         storage: ObjectStorage,
         queue: ParseJobQueue,
-        parser: WorkerParser,
+        parsers: dict[ParserBackend, WorkerParser],
         temp_root: str,
     ) -> None:
         self.session_factory = session_factory
         self.storage = storage
         self.queue = queue
-        self.parser = parser
+        self.parsers = parsers
         self.temp_root = Path(temp_root)
         self.temp_root.mkdir(parents=True, exist_ok=True)
 
@@ -64,7 +65,14 @@ class WorkerRunner:
                 working_dir = Path(temp_dir)
                 input_path = working_dir / Path(job.filename).name
                 input_path.write_bytes(source_data)
-                parsed = self.parser.parse(input_path=input_path, output_dir=working_dir)
+                parser = self.parsers.get(job.parser_backend)
+                if parser is None:
+                    msg = (
+                        "unsupported parser backend requested for job "
+                        f"{job.id}: {job.parser_backend}"
+                    )
+                    raise WorkerParseError(msg)
+                parsed = parser.parse(input_path=input_path, output_dir=working_dir)
 
             with self.session_factory() as session:
                 document_service = DocumentService(session=session, storage=self.storage)

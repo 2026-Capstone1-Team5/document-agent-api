@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "boto3>=1.40.39",
     "fastapi[standard]>=0.135.1",
+    "markitdown[docx,pdf,pptx,xlsx]>=0.1.0",
     "psycopg[binary]>=3.3.3",
     "pydantic-settings>=2.13.1",
     "sqlalchemy>=2.0.48",

@@ -1,18 +1,22 @@
 from src.config import get_settings
 from src.database import SessionLocal
 from src.model_registry import load_model_registry
+from src.parser_backends import ParserBackend
 from src.queueing.dependencies import get_parse_job_queue
 from src.storage.dependencies import get_object_storage
-from src.worker.parser import PdftotextParser
+from src.worker.parser import MarkItDownParser, PdftotextParser, WorkerParser
 from src.worker.runner import WorkerRunner
 
 
-def _build_parser():
+def _build_parsers() -> dict[ParserBackend, WorkerParser]:
     settings = get_settings()
-    return PdftotextParser(
-        command=settings.pdftotext_command,
-        timeout_seconds=settings.parser_timeout_seconds,
-    )
+    return {
+        "markitdown": MarkItDownParser(),
+        "pdftotext": PdftotextParser(
+            command=settings.pdftotext_command,
+            timeout_seconds=settings.parser_timeout_seconds,
+        ),
+    }
 
 
 def main() -> None:
@@ -22,7 +26,7 @@ def main() -> None:
         session_factory=SessionLocal,
         storage=get_object_storage(),
         queue=get_parse_job_queue(),
-        parser=_build_parser(),
+        parsers=_build_parsers(),
         temp_root=settings.worker_temp_root,
     )
     runner.run_forever(timeout_seconds=settings.worker_poll_timeout_seconds)

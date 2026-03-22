@@ -85,9 +85,80 @@ def test_create_document_returns_queued_job(
     assert response.status_code == 202
     body = response.json()
     assert body["job"]["filename"] == "demo.pdf"
+    assert body["job"]["parserBackend"] == "markitdown"
     assert body["job"]["status"] == "queued"
     assert body["job"]["documentId"] is None
     assert parse_job_queue.messages[0]["filename"] == "demo.pdf"
+    assert parse_job_queue.messages[0]["parser_backend"] == "markitdown"
+
+
+def test_create_document_allows_parser_backend_override(
+    client: TestClient,
+    parse_job_queue: InMemoryParseJobQueue,
+) -> None:
+    response = client.post(
+        "/api/v1/documents?parserBackend=pdftotext",
+        files={"file": ("demo.pdf", b"%PDF-mock", "application/pdf")},
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["job"]["parserBackend"] == "pdftotext"
+    assert parse_job_queue.messages[-1]["parser_backend"] == "pdftotext"
+
+
+def test_create_document_rejects_pdftotext_for_office_upload(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/documents?parserBackend=pdftotext",
+        files={
+            "file": (
+                "demo.docx",
+                b"office-bytes",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "unsupported_parser_backend_for_file_type"
+
+
+@pytest.mark.parametrize(
+    ("filename", "content_type"),
+    [
+        (
+            "demo.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+        (
+            "demo.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ),
+        (
+            "demo.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    ],
+)
+def test_create_document_accepts_markitdown_office_formats(
+    client: TestClient,
+    parse_job_queue: InMemoryParseJobQueue,
+    filename: str,
+    content_type: str,
+) -> None:
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": (filename, b"office-bytes", content_type)},
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["job"]["filename"] == filename
+    assert body["job"]["parserBackend"] == "markitdown"
+    assert parse_job_queue.messages[-1]["filename"] == filename
+    assert parse_job_queue.messages[-1]["content_type"] == content_type
 
 
 def test_create_document_does_not_create_document_row(client: TestClient) -> None:

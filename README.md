@@ -104,7 +104,10 @@ export WORKER_TEMP_ROOT='/tmp/document-agent-api-worker'
 export PDFTOTEXT_COMMAND='pdftotext'
 ```
 
-`pdftotext` is the current lightweight default for temporary deployments. It works for PDFs with embedded text, not scanned PDFs or image OCR.
+`markitdown` is the default parser path. It converts supported documents directly to Markdown through the Python API and works well as the general-purpose worker path.
+Currently enabled office/document formats include `pdf`, `docx`, `pptx`, and `xlsx`.
+
+If needed, a request can override the parser with `?parserBackend=pdftotext` as a lightweight fallback for PDFs with embedded text. `PARSER_TIMEOUT_SECONDS` currently applies to the `pdftotext` fallback path.
 
 Current upload behavior:
 
@@ -139,10 +142,27 @@ uv run python -m src.worker.main
 
 For Railway, deploy two services from the same repository:
 
-- API service command: `uv run uvicorn src.main:app --host 0.0.0.0 --port $PORT`
-- Worker service command: `uv run python -m src.worker.main`
+- API service
+  - Dockerfile: `Dockerfile`
+  - command: `uv run uvicorn src.main:app --host 0.0.0.0 --port $PORT`
+- Worker service
+  - Dockerfile: `Dockerfile.worker`
+  - command: `uv run python -m src.worker.main`
 
-The Docker image installs `poppler-utils`, so the worker can use `pdftotext` without additional setup.
+Recommended Railway worker env:
+
+```bash
+QUEUE_BACKEND=redis
+REDIS_URL=redis://default:password@host:6379/0
+PARSE_JOB_QUEUE_NAME=document-agent-api:parse-jobs
+
+PARSER_TIMEOUT_SECONDS=300
+PDFTOTEXT_COMMAND=pdftotext
+WORKER_TEMP_ROOT=/tmp/document-agent-api-worker
+```
+
+Upload requests default to `markitdown`. Keep `pdftotext` installed as a simpler PDF fallback and select it per request with `parserBackend=pdftotext`. `PARSER_TIMEOUT_SECONDS` currently applies to the `pdftotext` fallback path.
+Currently enabled office/document formats include `pdf`, `docx`, `pptx`, and `xlsx`.
 
 Health check:
 

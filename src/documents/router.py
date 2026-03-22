@@ -21,6 +21,7 @@ from src.parse_jobs.dependencies import get_parse_job_service
 from src.parse_jobs.exceptions import ParseJobEnqueueError
 from src.parse_jobs.schemas import ParseJobResponse
 from src.parse_jobs.service import ParseJobService
+from src.parser_backends import DEFAULT_REQUEST_PARSER_BACKEND, ParserBackend
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
@@ -30,14 +31,26 @@ INLINE_SAFE_SOURCE_MEDIA_TYPES = {
     "image/png",
 }
 SOURCE_MEDIA_TYPES_BY_EXTENSION = {
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".hwp": "application/vnd.hancom.hwp",
     ".hwpx": "application/vnd.hancom.hwpx",
     ".jpeg": "image/jpeg",
     ".jpg": "image/jpeg",
     ".pdf": "application/pdf",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ".png": "image/png",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 SOURCE_MEDIA_TYPES_BY_CONTENT_TYPE = {
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    ),
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ),
     "application/haansoft-hwp": "application/vnd.hancom.hwp",
     "application/haansoft-hwpx": "application/vnd.hancom.hwpx",
     "application/pdf": "application/pdf",
@@ -52,6 +65,10 @@ SOURCE_MEDIA_TYPES_BY_CONTENT_TYPE = {
 @router.post("", response_model=ParseJobResponse, status_code=202)
 async def create_document(
     file: UploadFile = File(...),
+    parser_backend: ParserBackend = Query(
+        default=DEFAULT_REQUEST_PARSER_BACKEND,
+        alias="parserBackend",
+    ),
     current_user: UserModel = Depends(get_current_document_user),
     service: ParseJobService = Depends(get_parse_job_service),
 ) -> ParseJobResponse:
@@ -78,12 +95,24 @@ async def create_document(
             message="Unsupported file type.",
             details={"filename": filename},
         )
+    if not _is_parser_backend_supported_for_upload(
+        filename=filename,
+        content_type=file.content_type,
+        parser_backend=parser_backend,
+    ):
+        raise ApiError(
+            status_code=400,
+            code="unsupported_parser_backend_for_file_type",
+            message="Selected parser backend is not supported for this file type.",
+            details={"filename": filename, "parserBackend": parser_backend},
+        )
 
     try:
         return service.create_job(
             owner_user_id=current_user.id,
             filename=filename,
             content_type=file.content_type or "application/octet-stream",
+            parser_backend=parser_backend,
             file_data=file_bytes,
         )
     except ParseJobEnqueueError as exc:
@@ -251,14 +280,20 @@ def delete_document(
 
 def _is_supported_file(*, filename: str, content_type: str | None) -> bool:
     supported_extensions = {
+        ".docx",
         ".pdf",
+        ".pptx",
         ".hwp",
         ".hwpx",
         ".png",
         ".jpg",
         ".jpeg",
+        ".xlsx",
     }
     supported_content_types = {
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/pdf",
         "application/x-hwp",
         "application/haansoft-hwp",
@@ -276,6 +311,20 @@ def _is_supported_file(*, filename: str, content_type: str | None) -> bool:
     if content_type and content_type.startswith("image/"):
         return True
     return False
+
+
+def _is_parser_backend_supported_for_upload(
+    *,
+    filename: str,
+    content_type: str | None,
+    parser_backend: ParserBackend,
+) -> bool:
+    if parser_backend != "pdftotext":
+        return True
+    return _determine_source_media_type(
+        filename=filename,
+        content_type=content_type or "application/octet-stream",
+    ) == "application/pdf"
 
 
 def _build_content_disposition(*, disposition: str, filename: str) -> str:
