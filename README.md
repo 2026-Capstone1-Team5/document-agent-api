@@ -165,7 +165,7 @@ REDIS_URL=redis://default:password@host:6379/0
 PARSE_JOB_QUEUE_NAME=document-agent-api:parse-jobs
 
 PARSER_BACKEND=document_ai
-DOCUMENT_AI_COMMAND=uv run python -m src.worker.document_ai_entrypoint {input_path} {output_dir} --language ko --page-adaptive
+DOCUMENT_AI_COMMAND="uv run python -m src.worker.document_ai_entrypoint {input_path} {output_dir} --language ko --page-adaptive"
 DOCUMENT_AI_TIMEOUT_SECONDS=300
 WORKER_TEMP_ROOT=/tmp/document-agent-api-worker
 ```
