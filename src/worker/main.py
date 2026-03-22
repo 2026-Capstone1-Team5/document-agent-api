@@ -11,7 +11,7 @@ from src.worker.runner import WorkerRunner
 def _build_parsers() -> dict[ParserBackend, WorkerParser]:
     settings = get_settings()
     return {
-        "markitdown": MarkItDownParser(timeout_seconds=settings.parser_timeout_seconds),
+        "markitdown": MarkItDownParser(),
         "pdftotext": PdftotextParser(
             command=settings.pdftotext_command,
             timeout_seconds=settings.parser_timeout_seconds,

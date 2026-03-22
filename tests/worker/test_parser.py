@@ -30,7 +30,7 @@ def test_markitdown_parser_reads_text_content(tmp_path) -> None:
     sys.modules["markitdown"] = fake_module
 
     try:
-        parser = MarkItDownParser(timeout_seconds=30)
+        parser = MarkItDownParser()
         parsed = parser.parse(input_path=input_path, output_dir=output_dir)
     finally:
         if original_module is None:
@@ -67,7 +67,7 @@ def test_markitdown_parser_raises_for_empty_text(tmp_path) -> None:
     sys.modules["markitdown"] = fake_module
 
     try:
-        parser = MarkItDownParser(timeout_seconds=30)
+        parser = MarkItDownParser()
         try:
             parser.parse(input_path=input_path, output_dir=output_dir)
         except WorkerParseError as exc:

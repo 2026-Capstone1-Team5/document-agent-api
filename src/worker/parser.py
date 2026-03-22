@@ -21,9 +21,6 @@ class WorkerParser(Protocol):
 
 
 class MarkItDownParser:
-    def __init__(self, *, timeout_seconds: int) -> None:
-        self.timeout_seconds = timeout_seconds
-
     def parse(self, *, input_path: Path, output_dir: Path) -> ParsedDocumentPayload:
         del output_dir
         try:
