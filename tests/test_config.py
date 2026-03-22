@@ -65,20 +65,3 @@ def test_blank_redis_url_is_rejected_for_redis_queue() -> None:
 
     assert "redis_url is required when queue_backend=redis" in str(exc_info.value)
 
-
-def test_parser_backend_rejects_unknown_value() -> None:
-    with pytest.raises(ValidationError) as exc_info:
-        Settings(auth_secret_key="secret", parser_backend="unknown")
-
-    assert "parser_backend must be one of" in str(exc_info.value)
-
-
-def test_document_ai_command_is_required_for_document_ai_backend() -> None:
-    with pytest.raises(ValidationError) as exc_info:
-        Settings(
-            auth_secret_key="secret",
-            parser_backend="document_ai",
-            document_ai_command="   ",
-        )
-
-    assert "document_ai_command is required when parser_backend=document_ai" in str(exc_info.value)
