@@ -37,8 +37,7 @@ class DocumentAiCliParser:
             timeout=self.timeout_seconds,
         )
         if completed.returncode != 0:
-            stderr = completed.stderr.strip() or completed.stdout.strip() or "parser command failed"
-            raise WorkerParseError(stderr)
+            raise WorkerParseError(self._format_subprocess_failure(completed))
 
         markdown_path = self._find_markdown_path(output_dir)
         json_path = self._find_json_path(output_dir)
@@ -79,6 +78,20 @@ class DocumentAiCliParser:
             if candidate.exists():
                 return candidate
         return None
+
+    @staticmethod
+    def _format_subprocess_failure(completed: subprocess.CompletedProcess[str]) -> str:
+        exit_code = completed.returncode
+        signal_part = f", signal={-exit_code}" if exit_code < 0 else ""
+        stderr = completed.stderr.strip()
+        stdout = completed.stdout.strip()
+        detail = stderr or stdout
+        if detail:
+            trimmed = detail[-1200:]
+            return (
+                f"parser command failed (exit_code={exit_code}{signal_part}): {trimmed}"
+            )
+        return f"parser command failed (exit_code={exit_code}{signal_part})"
 
 
 class PdftotextParser:
