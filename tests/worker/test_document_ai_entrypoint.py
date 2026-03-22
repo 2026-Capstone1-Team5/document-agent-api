@@ -52,6 +52,20 @@ def test_resolve_markdown_path_raises_when_missing(tmp_path) -> None:
         raise AssertionError("expected EntrypointError")
 
 
+def test_load_json_wraps_decode_error(tmp_path) -> None:
+    from src.worker.document_ai_entrypoint import _load_json
+
+    json_path = tmp_path / "meta.json"
+    json_path.write_text("{invalid", encoding="utf-8")
+
+    try:
+        _load_json(json_path)
+    except EntrypointError as exc:
+        assert "failed to load JSON" in str(exc)
+    else:
+        raise AssertionError("expected EntrypointError")
+
+
 def test_build_canonical_json_contains_document_and_blocks(tmp_path) -> None:
     input_path = tmp_path / "sample.pdf"
     input_path.write_bytes(b"%PDF-sample")

@@ -13,7 +13,12 @@ class EntrypointError(Exception):
 
 
 def _load_json(path: Path) -> dict[str, Any]:
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        text = path.read_text(encoding="utf-8")
+        return json.loads(text)
+    except (OSError, json.JSONDecodeError) as exc:
+        msg = f"failed to load JSON from {path}: {exc}"
+        raise EntrypointError(msg) from exc
 
 
 def _resolve_markdown_path(output_dir: Path, metadata: dict[str, Any]) -> Path:
