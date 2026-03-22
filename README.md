@@ -106,6 +106,7 @@ export PDFTOTEXT_COMMAND='pdftotext'
 ```
 
 `markitdown` is the default parser backend. It converts supported documents directly to Markdown through the Python API and works well as the general-purpose worker path.
+Currently enabled office/document formats include `pdf`, `docx`, `pptx`, and `xlsx`.
 
 If needed, `PARSER_BACKEND=pdftotext` remains available as a lightweight fallback for PDFs with embedded text.
 
@@ -163,6 +164,7 @@ WORKER_TEMP_ROOT=/tmp/document-agent-api-worker
 ```
 
 `markitdown` is the default worker parser backend. Keep `pdftotext` installed as a simpler fallback by setting `PARSER_BACKEND=pdftotext`.
+Currently enabled office/document formats include `pdf`, `docx`, `pptx`, and `xlsx`.
 
 Health check:
 
