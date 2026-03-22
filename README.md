@@ -12,6 +12,9 @@ It is responsible for:
 
 This repository serves the Web app and can be consumed by a separate MCP repository. It does not implement local OCR or VLM parser internals.
 
+Architecture reference:
+- `docs/ARCHITECTURE.md`
+
 ## Stack
 
 - Python package manager: `uv`
