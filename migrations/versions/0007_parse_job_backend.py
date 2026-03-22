@@ -1,6 +1,6 @@
 """add parser backend to parse jobs
 
-Revision ID: 0007_add_parse_job_parser_backend
+Revision ID: 0007_parse_job_backend
 Revises: 0006_create_parse_jobs
 Create Date: 2026-03-22
 """
@@ -8,7 +8,7 @@ Create Date: 2026-03-22
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0007_add_parse_job_parser_backend"
+revision = "0007_parse_job_backend"
 down_revision = "0006_create_parse_jobs"
 branch_labels = None
 depends_on = None
