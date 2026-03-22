@@ -148,27 +148,10 @@ uv run python -m src.worker.main
 
 For Railway, deploy two services from the same repository:
 
-- API service
-  - Dockerfile: `Dockerfile`
-  - command: `uv run uvicorn src.main:app --host 0.0.0.0 --port $PORT`
-- Worker service
-  - Dockerfile: `Dockerfile.worker`
-  - command: `uv run python -m src.worker.main`
+- API service command: `uv run uvicorn src.main:app --host 0.0.0.0 --port $PORT`
+- Worker service command: `uv run python -m src.worker.main`
 
-`Dockerfile.worker` includes `vendor/document-ai` and runtime dependencies for `PARSER_BACKEND=document_ai` (PyMuPDF, Pillow, MinerU CPU stack).
-
-Recommended Railway worker env for document-ai:
-
-```bash
-QUEUE_BACKEND=redis
-REDIS_URL=redis://default:password@host:6379/0
-PARSE_JOB_QUEUE_NAME=document-agent-api:parse-jobs
-
-PARSER_BACKEND=document_ai
-DOCUMENT_AI_COMMAND="uv run python -m src.worker.document_ai_entrypoint {input_path} {output_dir} --language ko --page-adaptive"
-DOCUMENT_AI_TIMEOUT_SECONDS=300
-WORKER_TEMP_ROOT=/tmp/document-agent-api-worker
-```
+The Docker image installs `poppler-utils`, so the worker can use `pdftotext` without additional setup.
 
 Health check:
 
