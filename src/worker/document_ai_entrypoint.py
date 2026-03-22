@@ -17,17 +17,30 @@ def _load_json(path: Path) -> dict[str, Any]:
 
 
 def _resolve_markdown_path(output_dir: Path, metadata: dict[str, Any]) -> Path:
+    base_dir = output_dir.resolve()
+
+    def _candidate_from_output(value: str) -> Path | None:
+        raw = Path(value)
+        candidate = raw.resolve() if raw.is_absolute() else (base_dir / raw).resolve()
+        try:
+            candidate.relative_to(base_dir)
+        except ValueError:
+            return None
+        if candidate.exists():
+            return candidate
+        return None
+
     outputs = metadata.get("outputs")
     if isinstance(outputs, dict):
         selected_markdown = outputs.get("selected_markdown")
         if isinstance(selected_markdown, str):
-            candidate = Path(selected_markdown)
-            if candidate.exists():
+            candidate = _candidate_from_output(selected_markdown)
+            if candidate is not None:
                 return candidate
         markdown = outputs.get("markdown")
         if isinstance(markdown, str):
-            candidate = Path(markdown)
-            if candidate.exists():
+            candidate = _candidate_from_output(markdown)
+            if candidate is not None:
                 return candidate
 
     candidates = [

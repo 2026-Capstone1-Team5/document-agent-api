@@ -24,6 +24,23 @@ def test_resolve_markdown_path_uses_selected_markdown_in_metadata(tmp_path) -> N
     assert resolved == markdown_path
 
 
+def test_resolve_markdown_path_rejects_path_outside_output_dir(tmp_path) -> None:
+    outside_path = tmp_path.parent / "outside.md"
+    outside_path.write_text("outside", encoding="utf-8")
+    metadata = {
+        "outputs": {
+            "selected_markdown": str(outside_path),
+        }
+    }
+
+    try:
+        _resolve_markdown_path(tmp_path, metadata)
+    except EntrypointError as exc:
+        assert "missing markdown content" in str(exc)
+    else:
+        raise AssertionError("expected EntrypointError")
+
+
 def test_resolve_markdown_path_raises_when_missing(tmp_path) -> None:
     metadata = {"outputs": {}}
 
