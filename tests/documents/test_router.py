@@ -90,6 +90,41 @@ def test_create_document_returns_queued_job(
     assert parse_job_queue.messages[0]["filename"] == "demo.pdf"
 
 
+@pytest.mark.parametrize(
+    ("filename", "content_type"),
+    [
+        (
+            "demo.docx",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        ),
+        (
+            "demo.pptx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        ),
+        (
+            "demo.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        ),
+    ],
+)
+def test_create_document_accepts_markitdown_office_formats(
+    client: TestClient,
+    parse_job_queue: InMemoryParseJobQueue,
+    filename: str,
+    content_type: str,
+) -> None:
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": (filename, b"office-bytes", content_type)},
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["job"]["filename"] == filename
+    assert parse_job_queue.messages[-1]["filename"] == filename
+    assert parse_job_queue.messages[-1]["content_type"] == content_type
+
+
 def test_create_document_does_not_create_document_row(client: TestClient) -> None:
     db_session = app.dependency_overrides[get_db_session]()
     before_count = db_session.query(DocumentModel).count()

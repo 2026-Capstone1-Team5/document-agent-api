@@ -30,14 +30,26 @@ INLINE_SAFE_SOURCE_MEDIA_TYPES = {
     "image/png",
 }
 SOURCE_MEDIA_TYPES_BY_EXTENSION = {
+    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".hwp": "application/vnd.hancom.hwp",
     ".hwpx": "application/vnd.hancom.hwpx",
     ".jpeg": "image/jpeg",
     ".jpg": "image/jpeg",
     ".pdf": "application/pdf",
+    ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ".png": "image/png",
+    ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
 }
 SOURCE_MEDIA_TYPES_BY_CONTENT_TYPE = {
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation": (
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    ),
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    ),
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document": (
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ),
     "application/haansoft-hwp": "application/vnd.hancom.hwp",
     "application/haansoft-hwpx": "application/vnd.hancom.hwpx",
     "application/pdf": "application/pdf",
@@ -251,14 +263,20 @@ def delete_document(
 
 def _is_supported_file(*, filename: str, content_type: str | None) -> bool:
     supported_extensions = {
+        ".docx",
         ".pdf",
+        ".pptx",
         ".hwp",
         ".hwpx",
         ".png",
         ".jpg",
         ".jpeg",
+        ".xlsx",
     }
     supported_content_types = {
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "application/pdf",
         "application/x-hwp",
         "application/haansoft-hwp",
