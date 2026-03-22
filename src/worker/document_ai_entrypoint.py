@@ -147,6 +147,13 @@ def run_entrypoint(
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    default_parse_script = (
+        Path(__file__).resolve().parents[2]
+        / "vendor"
+        / "document-ai"
+        / "scripts"
+        / "parse_document.py"
+    )
     parser = argparse.ArgumentParser(
         description="Run document-ai parser and normalize outputs for document-agent-api worker.",
     )
@@ -154,7 +161,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("output_dir")
     parser.add_argument(
         "--parse-script",
-        default="vendor/document-ai/scripts/parse_document.py",
+        default=str(default_parse_script),
     )
     parser.add_argument("--language", default="ko")
     parser.add_argument("--page-adaptive", action="store_true")

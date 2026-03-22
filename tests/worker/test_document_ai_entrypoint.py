@@ -5,6 +5,7 @@ from src.worker import document_ai_entrypoint
 from src.worker.document_ai_entrypoint import (
     EntrypointError,
     _build_canonical_json,
+    _build_parser,
     _resolve_markdown_path,
     run_entrypoint,
 )
@@ -64,6 +65,13 @@ def test_load_json_wraps_decode_error(tmp_path) -> None:
         assert "failed to load JSON" in str(exc)
     else:
         raise AssertionError("expected EntrypointError")
+
+
+def test_build_parser_uses_absolute_default_parse_script_path() -> None:
+    parser = _build_parser()
+    args = parser.parse_args(["/tmp/input.pdf", "/tmp/out"])
+    assert str(args.parse_script).startswith("/")
+    assert args.parse_script.endswith("vendor/document-ai/scripts/parse_document.py")
 
 
 def test_build_canonical_json_contains_document_and_blocks(tmp_path) -> None:
