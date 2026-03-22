@@ -46,7 +46,17 @@ COPY vendor ./vendor
 
 # Preload MinerU/Hugging Face models during image build to avoid first-run downloads.
 RUN mkdir -p "$HF_HOME" /tmp/model-warmup \
-    && .venv/bin/python -c "import fitz; from pathlib import Path; p=Path('/tmp/model-warmup/warmup.pdf'); p.parent.mkdir(parents=True, exist_ok=True); d=fitz.open(); pg=d.new_page(); pg.insert_text((72,72),'document-ai model warmup'); d.save(p); d.close()" \
+    && .venv/bin/python - <<'PY' \
+import fitz
+from pathlib import Path
+warmup_pdf = Path("/tmp/model-warmup/warmup.pdf")
+warmup_pdf.parent.mkdir(parents=True, exist_ok=True)
+doc = fitz.open()
+page = doc.new_page()
+page.insert_text((72, 72), "document-ai model warmup")
+doc.save(warmup_pdf)
+doc.close()
+PY \
     && .venv/bin/python -m src.worker.document_ai_entrypoint \
         "/tmp/model-warmup/warmup.pdf" \
         "/tmp/model-warmup/out" \
