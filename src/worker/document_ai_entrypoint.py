@@ -121,7 +121,8 @@ def run_entrypoint(
         timeout=timeout_seconds,
     )
     if completed.returncode != 0:
-        raise EntrypointError(_format_subprocess_failure(completed))
+        stderr = completed.stderr.strip() or completed.stdout.strip() or "document-ai parse failed"
+        raise EntrypointError(stderr)
 
     metadata_path = output_dir / "meta.json"
     if not metadata_path.exists():
@@ -143,20 +144,6 @@ def run_entrypoint(
         json.dumps(canonical_json, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-
-
-def _format_subprocess_failure(completed: subprocess.CompletedProcess[str]) -> str:
-    exit_code = completed.returncode
-    signal_part = f", signal={-exit_code}" if exit_code < 0 else ""
-    stderr = completed.stderr.strip()
-    stdout = completed.stdout.strip()
-    detail = stderr or stdout
-    if detail:
-        trimmed = detail[-1200:]
-        return (
-            f"document-ai parse failed (exit_code={exit_code}{signal_part}): {trimmed}"
-        )
-    return f"document-ai parse failed (exit_code={exit_code}{signal_part})"
 
 
 def _build_parser() -> argparse.ArgumentParser:
