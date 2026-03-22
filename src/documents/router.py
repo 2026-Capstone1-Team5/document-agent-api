@@ -95,6 +95,17 @@ async def create_document(
             message="Unsupported file type.",
             details={"filename": filename},
         )
+    if not _is_parser_backend_supported_for_upload(
+        filename=filename,
+        content_type=file.content_type,
+        parser_backend=parser_backend,
+    ):
+        raise ApiError(
+            status_code=400,
+            code="unsupported_parser_backend_for_file_type",
+            message="Selected parser backend is not supported for this file type.",
+            details={"filename": filename, "parserBackend": parser_backend},
+        )
 
     try:
         return service.create_job(
@@ -300,6 +311,20 @@ def _is_supported_file(*, filename: str, content_type: str | None) -> bool:
     if content_type and content_type.startswith("image/"):
         return True
     return False
+
+
+def _is_parser_backend_supported_for_upload(
+    *,
+    filename: str,
+    content_type: str | None,
+    parser_backend: ParserBackend,
+) -> bool:
+    if parser_backend != "pdftotext":
+        return True
+    return _determine_source_media_type(
+        filename=filename,
+        content_type=content_type or "application/octet-stream",
+    ) == "application/pdf"
 
 
 def _build_content_disposition(*, disposition: str, filename: str) -> str:

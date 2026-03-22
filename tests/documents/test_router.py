@@ -107,6 +107,24 @@ def test_create_document_allows_parser_backend_override(
     assert parse_job_queue.messages[-1]["parser_backend"] == "pdftotext"
 
 
+def test_create_document_rejects_pdftotext_for_office_upload(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/api/v1/documents?parserBackend=pdftotext",
+        files={
+            "file": (
+                "demo.docx",
+                b"office-bytes",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "unsupported_parser_backend_for_file_type"
+
+
 @pytest.mark.parametrize(
     ("filename", "content_type"),
     [
