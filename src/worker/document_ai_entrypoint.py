@@ -32,7 +32,6 @@ def _resolve_markdown_path(output_dir: Path, metadata: dict[str, Any]) -> Path:
 
     candidates = [
         output_dir / "selected_markdown.md",
-        output_dir / "result.md",
     ]
     for candidate in candidates:
         if candidate.exists():
