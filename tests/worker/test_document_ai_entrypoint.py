@@ -99,7 +99,7 @@ def test_build_canonical_json_contains_document_and_blocks(tmp_path) -> None:
     json.dumps(canonical)
 
 
-def test_run_entrypoint_writes_worker_contract_files(tmp_path) -> None:
+def test_run_entrypoint_writes_worker_contract_files(tmp_path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     input_path = tmp_path / "sample.pdf"
     output_dir = tmp_path / "out"
     parse_script = tmp_path / "parse_document.py"
@@ -120,19 +120,15 @@ def test_run_entrypoint_writes_worker_contract_files(tmp_path) -> None:
         (output_dir / "meta.json").write_text(json.dumps(metadata), encoding="utf-8")
         return subprocess.CompletedProcess(args=["python"], returncode=0, stdout="", stderr="")
 
-    original_run = document_ai_entrypoint.subprocess.run
-    document_ai_entrypoint.subprocess.run = fake_run
-    try:
-        run_entrypoint(
-            input_path=input_path,
-            output_dir=output_dir,
-            parse_script=parse_script,
-            language="ko",
-            page_adaptive=True,
-            timeout_seconds=60,
-        )
-    finally:
-        document_ai_entrypoint.subprocess.run = original_run
+    monkeypatch.setattr(document_ai_entrypoint.subprocess, "run", fake_run)
+    run_entrypoint(
+        input_path=input_path,
+        output_dir=output_dir,
+        parse_script=parse_script,
+        language="ko",
+        page_adaptive=True,
+        timeout_seconds=60,
+    )
 
     result_md = output_dir / "result.md"
     result_json = output_dir / "result.json"
