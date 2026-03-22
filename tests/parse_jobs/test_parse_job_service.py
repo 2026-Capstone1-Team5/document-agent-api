@@ -33,15 +33,19 @@ def test_create_job_persists_job_and_enqueues_message(db_session, object_storage
         owner_user_id=owner_user_id,
         filename="demo.pdf",
         content_type="application/pdf",
+        parser_backend="markitdown",
         file_data=b"%PDF-demo",
     )
 
     assert created.job.status == "queued"
     assert created.job.filename == "demo.pdf"
+    assert created.job.parser_backend == "markitdown"
     stored = db_session.get(ParseJobModel, str(created.job.id))
     assert stored is not None
     assert stored.source_object_key is not None
+    assert stored.parser_backend == "markitdown"
     assert queue.messages[0]["job_id"] == str(created.job.id)
+    assert queue.messages[0]["parser_backend"] == "markitdown"
 
 
 def test_get_job_raises_for_other_user(db_session, object_storage) -> None:
@@ -53,6 +57,7 @@ def test_get_job_raises_for_other_user(db_session, object_storage) -> None:
         owner_user_id=owner_user_id,
         filename="demo.pdf",
         content_type="application/pdf",
+        parser_backend="markitdown",
         file_data=b"%PDF-demo",
     )
 
@@ -74,6 +79,7 @@ def test_create_job_marks_failure_when_enqueue_fails(db_session, object_storage)
             owner_user_id=owner_user_id,
             filename="demo.pdf",
             content_type="application/pdf",
+            parser_backend="markitdown",
             file_data=b"%PDF-demo",
         )
 
@@ -93,6 +99,7 @@ def test_create_job_with_dotdot_filename_uses_safe_key(db_session, tmp_path) -> 
         owner_user_id=owner_user_id,
         filename="..",
         content_type="application/pdf",
+        parser_backend="markitdown",
         file_data=b"%PDF-demo",
     )
 
@@ -125,6 +132,7 @@ def test_create_job_cleans_up_source_object_when_commit_fails(db_session, tmp_pa
             owner_user_id=owner_user_id,
             filename="../demo.pdf",
             content_type="application/pdf",
+            parser_backend="markitdown",
             file_data=b"%PDF-demo",
         )
 

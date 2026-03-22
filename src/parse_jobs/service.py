@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import select
@@ -11,7 +12,8 @@ from sqlalchemy.orm import Session
 from src.documents.utils import sanitize_document_filename
 from src.parse_jobs.exceptions import ParseJobEnqueueError, ParseJobNotFoundError
 from src.parse_jobs.models import ParseJobModel
-from src.parse_jobs.schemas import ParseJobResponse, ParseJobSummary
+from src.parse_jobs.schemas import ParseJobResponse, ParseJobStatus, ParseJobSummary
+from src.parser_backends import ParserBackend
 from src.queueing.backends import ParseJobQueue
 from src.storage.backends import ObjectStorage
 
@@ -25,6 +27,7 @@ class ParseJobWorkItem:
     source_object_key: str
     filename: str
     content_type: str
+    parser_backend: ParserBackend
 
 
 class ParseJobService:
@@ -45,6 +48,7 @@ class ParseJobService:
         owner_user_id: str,
         filename: str,
         content_type: str,
+        parser_backend: ParserBackend,
         file_data: bytes,
     ) -> ParseJobResponse:
         job_id = str(uuid4())
@@ -65,6 +69,7 @@ class ParseJobService:
                 source_object_key=source_object_key,
                 filename=filename,
                 content_type=content_type,
+                parser_backend=parser_backend,
                 status="queued",
             )
             self.session.add(job)
@@ -77,6 +82,7 @@ class ParseJobService:
                     "source_object_key": source_object_key,
                     "filename": filename,
                     "content_type": content_type,
+                    "parser_backend": parser_backend,
                 }
             )
         except Exception as exc:
@@ -126,6 +132,7 @@ class ParseJobService:
             source_object_key=job.source_object_key,
             filename=job.filename,
             content_type=job.content_type,
+            parser_backend=job.parser_backend,  # type: ignore[arg-type]
         )
 
     def complete_job(self, *, job_id: UUID, document_id: UUID) -> None:
@@ -182,7 +189,8 @@ class ParseJobService:
             id=UUID(job.id),
             filename=job.filename,
             contentType=job.content_type,
-            status=job.status,
+            parserBackend=cast(ParserBackend, job.parser_backend),
+            status=cast(ParseJobStatus, job.status),
             documentId=UUID(job.document_id) if job.document_id else None,
             errorCode=job.error_code,
             errorMessage=job.error_message,

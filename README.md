@@ -101,14 +101,13 @@ Set worker execution configuration:
 export WORKER_POLL_TIMEOUT_SECONDS='5'
 export PARSER_TIMEOUT_SECONDS='300'
 export WORKER_TEMP_ROOT='/tmp/document-agent-api-worker'
-export PARSER_BACKEND='markitdown'
 export PDFTOTEXT_COMMAND='pdftotext'
 ```
 
-`markitdown` is the default parser backend. It converts supported documents directly to Markdown through the Python API and works well as the general-purpose worker path.
+`markitdown` is the default parser path. It converts supported documents directly to Markdown through the Python API and works well as the general-purpose worker path.
 Currently enabled office/document formats include `pdf`, `docx`, `pptx`, and `xlsx`.
 
-If needed, `PARSER_BACKEND=pdftotext` remains available as a lightweight fallback for PDFs with embedded text.
+If needed, a request can override the parser with `?parserBackend=pdftotext` as a lightweight fallback for PDFs with embedded text.
 
 Current upload behavior:
 
@@ -157,13 +156,12 @@ QUEUE_BACKEND=redis
 REDIS_URL=redis://default:password@host:6379/0
 PARSE_JOB_QUEUE_NAME=document-agent-api:parse-jobs
 
-PARSER_BACKEND=markitdown
 PARSER_TIMEOUT_SECONDS=300
 PDFTOTEXT_COMMAND=pdftotext
 WORKER_TEMP_ROOT=/tmp/document-agent-api-worker
 ```
 
-`markitdown` is the default worker parser backend. Keep `pdftotext` installed as a simpler fallback by setting `PARSER_BACKEND=pdftotext`.
+Upload requests default to `markitdown`. Keep `pdftotext` installed as a simpler PDF fallback and select it per request with `parserBackend=pdftotext`.
 Currently enabled office/document formats include `pdf`, `docx`, `pptx`, and `xlsx`.
 
 Health check:

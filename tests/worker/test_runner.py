@@ -24,8 +24,12 @@ def _create_user(session, *, email: str = "owner@example.com") -> str:
 
 
 class SuccessfulParser:
+    def __init__(self) -> None:
+        self.calls = 0
+
     def parse(self, *, input_path, output_dir):  # type: ignore[no-untyped-def]
         del input_path, output_dir
+        self.calls += 1
         return ParsedDocumentPayload(
             markdown="# parsed",
             canonical_json={"document": {"title": "parsed"}},
@@ -33,8 +37,12 @@ class SuccessfulParser:
 
 
 class FailingParser:
+    def __init__(self) -> None:
+        self.calls = 0
+
     def parse(self, *, input_path, output_dir):  # type: ignore[no-untyped-def]
         del input_path, output_dir
+        self.calls += 1
         raise WorkerParseError("parser failed")
 
 
@@ -50,8 +58,10 @@ def test_worker_runner_creates_document_and_marks_job_succeeded(
         owner_user_id=owner_user_id,
         filename="demo.pdf",
         content_type="application/pdf",
+        parser_backend="markitdown",
         file_data=b"%PDF-demo",
     )
+    parser = SuccessfulParser()
 
     runner = WorkerRunner(
         session_factory=sessionmaker(
@@ -61,7 +71,7 @@ def test_worker_runner_creates_document_and_marks_job_succeeded(
         ),
         storage=object_storage,
         queue=queue,
-        parser=SuccessfulParser(),  # type: ignore[arg-type]
+        parsers={"markitdown": parser, "pdftotext": FailingParser()},
         temp_root=str(tmp_path),
     )
 
@@ -72,6 +82,7 @@ def test_worker_runner_creates_document_and_marks_job_succeeded(
     assert refreshed_job is not None
     assert refreshed_job.status == "succeeded"
     assert refreshed_job.document_id is not None
+    assert parser.calls == 1
     document = db_session.get(DocumentModel, refreshed_job.document_id)
     assert document is not None
 
@@ -88,8 +99,10 @@ def test_worker_runner_marks_job_failed_on_parser_error(
         owner_user_id=owner_user_id,
         filename="demo.pdf",
         content_type="application/pdf",
+        parser_backend="pdftotext",
         file_data=b"%PDF-demo",
     )
+    parser = FailingParser()
 
     runner = WorkerRunner(
         session_factory=sessionmaker(
@@ -99,7 +112,7 @@ def test_worker_runner_marks_job_failed_on_parser_error(
         ),
         storage=object_storage,
         queue=queue,
-        parser=FailingParser(),  # type: ignore[arg-type]
+        parsers={"markitdown": SuccessfulParser(), "pdftotext": parser},
         temp_root=str(tmp_path),
     )
 
@@ -110,6 +123,7 @@ def test_worker_runner_marks_job_failed_on_parser_error(
     assert refreshed_job is not None
     assert refreshed_job.status == "failed"
     assert refreshed_job.error_code == "parse_failed"
+    assert parser.calls == 1
 
 
 def test_worker_runner_skips_payload_without_job_id(
@@ -128,7 +142,7 @@ def test_worker_runner_skips_payload_without_job_id(
         ),
         storage=object_storage,
         queue=queue,
-        parser=SuccessfulParser(),  # type: ignore[arg-type]
+        parsers={"markitdown": SuccessfulParser(), "pdftotext": FailingParser()},
         temp_root=str(tmp_path),
     )
 
@@ -153,7 +167,7 @@ def test_worker_runner_skips_payload_with_invalid_job_id(
         ),
         storage=object_storage,
         queue=queue,
-        parser=SuccessfulParser(),  # type: ignore[arg-type]
+        parsers={"markitdown": SuccessfulParser(), "pdftotext": FailingParser()},
         temp_root=str(tmp_path),
     )
 

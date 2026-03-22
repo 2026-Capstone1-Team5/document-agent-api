@@ -64,16 +64,8 @@ def test_blank_redis_url_is_rejected_for_redis_queue() -> None:
         )
 
     assert "redis_url is required when queue_backend=redis" in str(exc_info.value)
-
-
-def test_parser_backend_rejects_unknown_value() -> None:
+def test_pdftotext_command_rejects_whitespace() -> None:
     with pytest.raises(ValidationError) as exc_info:
-        Settings(auth_secret_key="secret", parser_backend="unknown")
+        Settings(auth_secret_key="secret", pdftotext_command="   ")
 
-    assert "parser_backend must be one of" in str(exc_info.value)
-
-
-def test_markitdown_is_the_default_parser_backend() -> None:
-    settings = Settings(auth_secret_key="secret")
-
-    assert settings.parser_backend == "markitdown"
+    assert "pdftotext_command must not be empty" in str(exc_info.value)

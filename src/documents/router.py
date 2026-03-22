@@ -21,6 +21,7 @@ from src.parse_jobs.dependencies import get_parse_job_service
 from src.parse_jobs.exceptions import ParseJobEnqueueError
 from src.parse_jobs.schemas import ParseJobResponse
 from src.parse_jobs.service import ParseJobService
+from src.parser_backends import DEFAULT_REQUEST_PARSER_BACKEND, ParserBackend
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
@@ -64,6 +65,10 @@ SOURCE_MEDIA_TYPES_BY_CONTENT_TYPE = {
 @router.post("", response_model=ParseJobResponse, status_code=202)
 async def create_document(
     file: UploadFile = File(...),
+    parser_backend: ParserBackend = Query(
+        default=DEFAULT_REQUEST_PARSER_BACKEND,
+        alias="parserBackend",
+    ),
     current_user: UserModel = Depends(get_current_document_user),
     service: ParseJobService = Depends(get_parse_job_service),
 ) -> ParseJobResponse:
@@ -96,6 +101,7 @@ async def create_document(
             owner_user_id=current_user.id,
             filename=filename,
             content_type=file.content_type or "application/octet-stream",
+            parser_backend=parser_backend,
             file_data=file_bytes,
         )
     except ParseJobEnqueueError as exc:

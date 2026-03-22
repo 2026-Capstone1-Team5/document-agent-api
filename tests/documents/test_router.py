@@ -85,9 +85,26 @@ def test_create_document_returns_queued_job(
     assert response.status_code == 202
     body = response.json()
     assert body["job"]["filename"] == "demo.pdf"
+    assert body["job"]["parserBackend"] == "markitdown"
     assert body["job"]["status"] == "queued"
     assert body["job"]["documentId"] is None
     assert parse_job_queue.messages[0]["filename"] == "demo.pdf"
+    assert parse_job_queue.messages[0]["parser_backend"] == "markitdown"
+
+
+def test_create_document_allows_parser_backend_override(
+    client: TestClient,
+    parse_job_queue: InMemoryParseJobQueue,
+) -> None:
+    response = client.post(
+        "/api/v1/documents?parserBackend=pdftotext",
+        files={"file": ("demo.pdf", b"%PDF-mock", "application/pdf")},
+    )
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["job"]["parserBackend"] == "pdftotext"
+    assert parse_job_queue.messages[-1]["parser_backend"] == "pdftotext"
 
 
 @pytest.mark.parametrize(
@@ -121,6 +138,7 @@ def test_create_document_accepts_markitdown_office_formats(
     assert response.status_code == 202
     body = response.json()
     assert body["job"]["filename"] == filename
+    assert body["job"]["parserBackend"] == "markitdown"
     assert parse_job_queue.messages[-1]["filename"] == filename
     assert parse_job_queue.messages[-1]["content_type"] == content_type
 

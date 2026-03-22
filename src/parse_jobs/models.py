@@ -23,6 +23,7 @@ class ParseJobModel(Base):
     source_object_key: Mapped[str] = mapped_column(String(512), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(255), nullable=False)
+    parser_backend: Mapped[str] = mapped_column(String(32), nullable=False, default="markitdown")
     status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
     document_id: Mapped[str | None] = mapped_column(
         String(36),
@@ -41,4 +42,3 @@ class ParseJobModel(Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     owner: Mapped["UserModel | None"] = relationship()
-
