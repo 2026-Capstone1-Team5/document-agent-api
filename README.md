@@ -106,14 +106,12 @@ export PDFTOTEXT_COMMAND='pdftotext'
 
 # switch to the heavier document-ai parser only when ready
 export PARSER_BACKEND='document_ai'
-export DOCUMENT_AI_COMMAND='uv run python -m src.worker.document_ai_entrypoint {input_path} {output_dir} --parse-script vendor/document-ai/scripts/parse_document.py --language ko --page-adaptive'
+export DOCUMENT_AI_COMMAND='uv run python ../document-ai/scripts/parse_document.py {input_path} {output_dir}'
 ```
 
 `pdftotext` is the current lightweight default for temporary deployments. It works for PDFs with embedded text, not scanned PDFs or image OCR.
 
 `DOCUMENT_AI_COMMAND` must accept `{input_path}` and `{output_dir}` placeholders. The worker runs the command as a subprocess and expects parse results to be written under the provided output directory.
-
-When using `PARSER_BACKEND=document_ai`, keep `document-ai` as a separate repository and wire it in as a deploy-time dependency. One practical approach is to include it as a git submodule at `vendor/document-ai`, then point `--parse-script` to `vendor/document-ai/scripts/parse_document.py`.
 
 Current upload behavior:
 
