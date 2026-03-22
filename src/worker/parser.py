@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +18,44 @@ class ParsedDocumentPayload:
 
 class WorkerParser(Protocol):
     def parse(self, *, input_path: Path, output_dir: Path) -> ParsedDocumentPayload: ...
+
+
+class MarkItDownParser:
+    def __init__(self, *, timeout_seconds: int) -> None:
+        self.timeout_seconds = timeout_seconds
+
+    def parse(self, *, input_path: Path, output_dir: Path) -> ParsedDocumentPayload:
+        del output_dir
+        try:
+            from markitdown import MarkItDown
+        except ImportError as exc:
+            msg = "markitdown is not installed"
+            raise WorkerParseError(msg) from exc
+
+        converter = MarkItDown(enable_plugins=False)
+        try:
+            result = converter.convert(str(input_path))
+        except Exception as exc:  # noqa: BLE001
+            raise WorkerParseError(str(exc)) from exc
+
+        text = result.text_content.strip()
+        if not text:
+            msg = "markitdown returned no extractable text"
+            raise WorkerParseError(msg)
+
+        canonical_json = {
+            "document": {
+                "source": "markitdown",
+                "filename": input_path.name,
+            },
+            "blocks": [
+                {
+                    "type": "text",
+                    "text": text,
+                }
+            ],
+        }
+        return ParsedDocumentPayload(markdown=text, canonical_json=canonical_json)
 
 
 class PdftotextParser:

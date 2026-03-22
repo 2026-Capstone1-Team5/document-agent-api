@@ -16,6 +16,7 @@ DEFAULT_PARSE_JOB_QUEUE_NAME = "document-agent-api:parse-jobs"
 DEFAULT_WORKER_POLL_TIMEOUT_SECONDS = 5
 DEFAULT_PARSER_TIMEOUT_SECONDS = 300
 DEFAULT_WORKER_TEMP_ROOT = "/tmp/document-agent-api-worker"
+DEFAULT_PARSER_BACKEND = "markitdown"
 DEFAULT_PDFTOTEXT_COMMAND = "pdftotext"
 
 
@@ -82,6 +83,7 @@ class Settings(BaseSettings):
     worker_poll_timeout_seconds: int = DEFAULT_WORKER_POLL_TIMEOUT_SECONDS
     parser_timeout_seconds: int = DEFAULT_PARSER_TIMEOUT_SECONDS
     worker_temp_root: str = DEFAULT_WORKER_TEMP_ROOT
+    parser_backend: str = DEFAULT_PARSER_BACKEND
     pdftotext_command: str = DEFAULT_PDFTOTEXT_COMMAND
 
     @field_validator("database_url", mode="before")
@@ -165,6 +167,15 @@ class Settings(BaseSettings):
     @classmethod
     def normalize_redis_url(cls, value: str) -> str:
         return value.strip()
+
+    @field_validator("parser_backend")
+    @classmethod
+    def validate_parser_backend(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"pdftotext", "markitdown"}:
+            msg = "parser_backend must be one of: pdftotext, markitdown"
+            raise ValueError(msg)
+        return normalized
 
     @field_validator("pdftotext_command")
     @classmethod
