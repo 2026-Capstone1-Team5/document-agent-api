@@ -4,11 +4,6 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV UV_LINK_MODE=copy
 ENV PIP_NO_CACHE_DIR=1
-ENV HF_HOME=/opt/mineru-cache/huggingface
-ENV TRANSFORMERS_CACHE=/opt/mineru-cache/huggingface/transformers
-ENV HUGGINGFACE_HUB_CACHE=/opt/mineru-cache/huggingface/hub
-ENV MINERU_MODEL_SOURCE=huggingface
-ENV MINERU_DEVICE_MODE=cpu
 
 WORKDIR /app
 
@@ -44,24 +39,4 @@ COPY migrations ./migrations
 COPY alembic.ini ./
 COPY vendor ./vendor
 
-# Preload MinerU/Hugging Face models during image build to avoid first-run downloads.
-RUN mkdir -p "$HF_HOME" /tmp/model-warmup \
-    && .venv/bin/python - <<'PY' \
-import fitz
-from pathlib import Path
-warmup_pdf = Path("/tmp/model-warmup/warmup.pdf")
-warmup_pdf.parent.mkdir(parents=True, exist_ok=True)
-doc = fitz.open()
-page = doc.new_page()
-page.insert_text((72, 72), "document-ai model warmup")
-doc.save(warmup_pdf)
-doc.close()
-PY \
-    && .venv/bin/python -m src.worker.document_ai_entrypoint \
-        "/tmp/model-warmup/warmup.pdf" \
-        "/tmp/model-warmup/out" \
-        --parse-script "/app/vendor/document-ai/scripts/parse_document.py" \
-        --language en \
-    && rm -rf /tmp/model-warmup
-
-CMD ["/app/.venv/bin/python", "-m", "src.worker.main"]
+CMD ["uv", "run", "python", "-m", "src.worker.main"]
