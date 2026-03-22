@@ -64,6 +64,8 @@ def test_blank_redis_url_is_rejected_for_redis_queue() -> None:
         )
 
     assert "redis_url is required when queue_backend=redis" in str(exc_info.value)
+
+
 def test_pdftotext_command_rejects_whitespace() -> None:
     with pytest.raises(ValidationError) as exc_info:
         Settings(auth_secret_key="secret", pdftotext_command="   ")
