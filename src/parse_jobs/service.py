@@ -13,7 +13,7 @@ from src.documents.utils import sanitize_document_filename
 from src.parse_jobs.exceptions import ParseJobEnqueueError, ParseJobNotFoundError
 from src.parse_jobs.models import ParseJobModel
 from src.parse_jobs.schemas import ParseJobResponse, ParseJobStatus, ParseJobSummary
-from src.parser_backends import ParserBackend
+from src.parser_backends import ParserBackend, normalize_parser_backend
 from src.queueing.backends import ParseJobQueue
 from src.storage.backends import ObjectStorage
 
@@ -126,13 +126,14 @@ class ParseJobService:
         self.session.add(job)
         self.session.commit()
         self.session.refresh(job)
+        parser_backend = normalize_parser_backend(job.parser_backend)
         return ParseJobWorkItem(
             id=UUID(job.id),
             owner_user_id=job.owner_user_id,
             source_object_key=job.source_object_key,
             filename=job.filename,
             content_type=job.content_type,
-            parser_backend=job.parser_backend,  # type: ignore[arg-type]
+            parser_backend=parser_backend,
         )
 
     def complete_job(self, *, job_id: UUID, document_id: UUID) -> None:

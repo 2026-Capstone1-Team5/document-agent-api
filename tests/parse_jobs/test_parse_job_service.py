@@ -139,3 +139,24 @@ def test_create_job_cleans_up_source_object_when_commit_fails(db_session, tmp_pa
     assert list(tmp_path.rglob("*.pdf")) == []
     assert normal_session.scalars(select(ParseJobModel)).first() is None
     assert normal_session.scalars(select(ParseJobModel)).first() is None
+
+
+def test_start_job_rejects_invalid_parser_backend_value(db_session, object_storage) -> None:
+    queue = InMemoryParseJobQueue()
+    service = ParseJobService(session=db_session, storage=object_storage, queue=queue)
+    owner_user_id = _create_user(db_session)
+    created = service.create_job(
+        owner_user_id=owner_user_id,
+        filename="demo.pdf",
+        content_type="application/pdf",
+        parser_backend="markitdown",
+        file_data=b"%PDF-demo",
+    )
+    job = db_session.get(ParseJobModel, str(created.job.id))
+    assert job is not None
+    job.parser_backend = "invalid-backend"
+    db_session.add(job)
+    db_session.commit()
+
+    with pytest.raises(ValueError):
+        service.start_job(UUID(str(created.job.id)))
