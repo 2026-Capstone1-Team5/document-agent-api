@@ -71,3 +71,25 @@ def test_pdftotext_command_rejects_whitespace() -> None:
         Settings(auth_secret_key="secret", pdftotext_command="   ")
 
     assert "pdftotext_command must not be empty" in str(exc_info.value)
+
+
+def test_document_ai_backend_does_not_require_script_path_in_shared_settings() -> None:
+    settings = Settings(
+        auth_secret_key="secret",
+        enabled_parser_backends=["markitdown", "document_ai"],
+    )
+
+    assert settings.document_ai_script_path is None
+
+
+def test_document_ai_script_path_is_normalized_when_provided(tmp_path) -> None:
+    script_path = tmp_path / "parse_document.py"
+    script_path.write_text("print('ok')")
+
+    settings = Settings(
+        auth_secret_key="secret",
+        enabled_parser_backends=["markitdown", "document_ai"],
+        document_ai_script_path=str(script_path),
+    )
+
+    assert settings.document_ai_script_path == str(script_path.resolve())
