@@ -278,15 +278,8 @@ class Settings(BaseSettings):
             msg = f"enabled_parser_backends contains unsupported values: {joined}"
             raise ValueError(msg)
 
-        if "document_ai" in self.enabled_parser_backends:
-            if not self.document_ai_script_path:
-                msg = "document_ai_script_path is required when document_ai backend is enabled"
-                raise ValueError(msg)
-
+        if self.document_ai_script_path:
             script_path = Path(self.document_ai_script_path).expanduser()
-            if not script_path.is_file():
-                msg = "document_ai_script_path must point to an existing file"
-                raise ValueError(msg)
             self.document_ai_script_path = str(script_path.resolve())
 
         return self
