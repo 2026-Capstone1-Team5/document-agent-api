@@ -152,8 +152,6 @@ class DocumentAIParser:
             raise WorkerParseError(msg)
 
         markdown_path = Path(markdown_output)
-        if not markdown_path.is_absolute():
-            markdown_path = (document_ai_output_dir / markdown_path).resolve()
         if not markdown_path.is_file():
             msg = f"document-ai markdown output not found: {markdown_path}"
             raise WorkerParseError(msg)

@@ -23,11 +23,8 @@ def _build_parsers() -> dict[ParserBackend, WorkerParser]:
         ),
     }
     if "document_ai" in settings.enabled_parser_backends:
-        if not settings.document_ai_script_path:
-            msg = "document_ai_script_path is required when document_ai backend is enabled"
-            raise RuntimeError(msg)
         parsers["document_ai"] = DocumentAIParser(
-            script_path=settings.document_ai_script_path,
+            script_path=settings.document_ai_script_path or "",
             timeout_seconds=settings.parser_timeout_seconds,
         )
     return parsers
