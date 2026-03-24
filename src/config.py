@@ -1,9 +1,15 @@
 import json
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+from src.parser_backends import (
+    DEFAULT_ENABLED_PARSER_BACKENDS,
+    PARSER_BACKEND_VALUES_SET,
+)
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg://postgres:postgres@127.0.0.1:5432/document_agent_api"
 DEFAULT_CORS_ALLOW_ORIGINS = ["https://document-agent-web.vercel.app"]
@@ -17,6 +23,33 @@ DEFAULT_WORKER_POLL_TIMEOUT_SECONDS = 5
 DEFAULT_PARSER_TIMEOUT_SECONDS = 300
 DEFAULT_WORKER_TEMP_ROOT = "/tmp/document-agent-api-worker"
 DEFAULT_PDFTOTEXT_COMMAND = "pdftotext"
+
+
+def normalize_string_list(values: str | list[str]) -> list[str]:
+    if isinstance(values, str):
+        raw = values.strip()
+        parsed_json: list[str] | None = None
+        if raw.startswith("["):
+            try:
+                json_value = json.loads(raw)
+                if isinstance(json_value, list):
+                    parsed_json = [str(item).strip() for item in json_value]
+            except json.JSONDecodeError:
+                parsed_json = None
+
+        if parsed_json is not None:
+            candidates = parsed_json
+        else:
+            candidates = [item.strip() for item in values.split(",")]
+    else:
+        candidates = [item.strip() for item in values]
+
+    normalized: list[str] = []
+    for candidate in candidates:
+        lowered = candidate.strip().lower()
+        if lowered and lowered not in normalized:
+            normalized.append(lowered)
+    return normalized
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -83,6 +116,10 @@ class Settings(BaseSettings):
     parser_timeout_seconds: int = DEFAULT_PARSER_TIMEOUT_SECONDS
     worker_temp_root: str = DEFAULT_WORKER_TEMP_ROOT
     pdftotext_command: str = DEFAULT_PDFTOTEXT_COMMAND
+    enabled_parser_backends: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: list(DEFAULT_ENABLED_PARSER_BACKENDS),
+    )
+    document_ai_script_path: str | None = None
 
     @field_validator("database_url", mode="before")
     @classmethod
@@ -93,6 +130,15 @@ class Settings(BaseSettings):
     @classmethod
     def validate_cors_allow_origins(cls, value: str | list[str]) -> list[str]:
         return normalize_cors_allow_origins(value)
+
+    @field_validator("enabled_parser_backends", mode="before")
+    @classmethod
+    def validate_enabled_parser_backends(cls, value: str | list[str]) -> list[str]:
+        normalized = normalize_string_list(value)
+        if not normalized:
+            msg = "enabled_parser_backends must not be empty"
+            raise ValueError(msg)
+        return normalized
 
     @field_validator("auth_secret_key")
     @classmethod
@@ -129,6 +175,14 @@ class Settings(BaseSettings):
     )
     @classmethod
     def normalize_optional_storage_string(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("document_ai_script_path", mode="before")
+    @classmethod
+    def normalize_optional_path(cls, value: str | None) -> str | None:
         if value is None:
             return None
         normalized = value.strip()
@@ -213,6 +267,27 @@ class Settings(BaseSettings):
         if self.queue_backend == "redis" and not self.redis_url:
             msg = "redis_url is required when queue_backend=redis"
             raise ValueError(msg)
+
+        unknown_backends = [
+            backend
+            for backend in self.enabled_parser_backends
+            if backend not in PARSER_BACKEND_VALUES_SET
+        ]
+        if unknown_backends:
+            joined = ", ".join(unknown_backends)
+            msg = f"enabled_parser_backends contains unsupported values: {joined}"
+            raise ValueError(msg)
+
+        if "document_ai" in self.enabled_parser_backends:
+            if not self.document_ai_script_path:
+                msg = "document_ai_script_path is required when document_ai backend is enabled"
+                raise ValueError(msg)
+
+            script_path = Path(self.document_ai_script_path).expanduser()
+            if not script_path.is_file():
+                msg = "document_ai_script_path must point to an existing file"
+                raise ValueError(msg)
+            self.document_ai_script_path = str(script_path.resolve())
 
         return self
 
