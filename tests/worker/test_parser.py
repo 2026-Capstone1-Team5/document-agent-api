@@ -1,9 +1,15 @@
+import json
 import subprocess
 import sys
 import types
 from unittest.mock import Mock
 
-from src.worker.parser import MarkItDownParser, PdftotextParser, WorkerParseError
+from src.worker.parser import (
+    DocumentAIParser,
+    MarkItDownParser,
+    PdftotextParser,
+    WorkerParseError,
+)
 
 
 def test_markitdown_parser_reads_text_content(tmp_path) -> None:
@@ -136,3 +142,36 @@ def test_pdftotext_parser_raises_for_empty_text(tmp_path) -> None:
             raise AssertionError("expected WorkerParseError")
     finally:
         subprocess.run = original_run
+
+
+def test_document_ai_parser_reads_relative_markdown_output(tmp_path) -> None:
+    input_path = tmp_path / "input.pdf"
+    output_dir = tmp_path / "out"
+    script_path = tmp_path / "parse_document.py"
+    input_path.write_bytes(b"%PDF-test")
+    output_dir.mkdir()
+    script_path.write_text("# stub")
+
+    parser = DocumentAIParser(script_path=str(script_path), timeout_seconds=30)
+
+    def fake_run(*args, **kwargs):
+        del args, kwargs
+        document_ai_output_dir = output_dir / "document_ai_output"
+        nested_dir = document_ai_output_dir / "nested"
+        nested_dir.mkdir(parents=True, exist_ok=True)
+        markdown_path = nested_dir / "result.md"
+        markdown_path.write_text("# parsed")
+        (document_ai_output_dir / "meta.json").write_text(
+            json.dumps({"outputs": {"markdown": "nested/result.md"}})
+        )
+        return subprocess.CompletedProcess(args=["python"], returncode=0, stdout="", stderr="")
+
+    original_run = subprocess.run
+    subprocess.run = fake_run
+    try:
+        parsed = parser.parse(input_path=input_path, output_dir=output_dir)
+    finally:
+        subprocess.run = original_run
+
+    assert parsed.markdown == "# parsed"
+    assert parsed.canonical_json["document"]["source"] == "document_ai"
