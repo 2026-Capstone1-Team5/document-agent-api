@@ -4,19 +4,33 @@ from src.model_registry import load_model_registry
 from src.parser_backends import ParserBackend
 from src.queueing.dependencies import get_parse_job_queue
 from src.storage.dependencies import get_object_storage
-from src.worker.parser import MarkItDownParser, PdftotextParser, WorkerParser
+from src.worker.parser import (
+    DocumentAIParser,
+    MarkItDownParser,
+    PdftotextParser,
+    WorkerParser,
+)
 from src.worker.runner import WorkerRunner
 
 
 def _build_parsers() -> dict[ParserBackend, WorkerParser]:
     settings = get_settings()
-    return {
+    parsers: dict[ParserBackend, WorkerParser] = {
         "markitdown": MarkItDownParser(),
         "pdftotext": PdftotextParser(
             command=settings.pdftotext_command,
             timeout_seconds=settings.parser_timeout_seconds,
         ),
     }
+    if "document_ai" in settings.enabled_parser_backends:
+        if not settings.document_ai_script_path:
+            msg = "document_ai_script_path is required when document_ai backend is enabled"
+            raise RuntimeError(msg)
+        parsers["document_ai"] = DocumentAIParser(
+            script_path=settings.document_ai_script_path,
+            timeout_seconds=settings.parser_timeout_seconds,
+        )
+    return parsers
 
 
 def main() -> None:

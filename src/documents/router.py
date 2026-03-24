@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from src.auth.dependencies import get_current_document_user
 from src.auth.models import UserModel
 from src.common.errors import ApiError
+from src.config import Settings, get_settings
 from src.documents.dependencies import get_document_service
 from src.documents.exceptions import DocumentNotFoundError, DocumentSourceUnavailableError
 from src.documents.schemas import (
@@ -69,6 +70,7 @@ async def create_document(
         default=DEFAULT_REQUEST_PARSER_BACKEND,
         alias="parserBackend",
     ),
+    settings: Settings = Depends(get_settings),
     current_user: UserModel = Depends(get_current_document_user),
     service: ParseJobService = Depends(get_parse_job_service),
 ) -> ParseJobResponse:
@@ -94,6 +96,13 @@ async def create_document(
             code="unsupported_file_type",
             message="Unsupported file type.",
             details={"filename": filename},
+        )
+    if parser_backend not in settings.enabled_parser_backends:
+        raise ApiError(
+            status_code=400,
+            code="parser_backend_disabled",
+            message="Selected parser backend is not enabled in this environment.",
+            details={"filename": filename, "parserBackend": parser_backend},
         )
     if not _is_parser_backend_supported_for_upload(
         filename=filename,
@@ -319,12 +328,15 @@ def _is_parser_backend_supported_for_upload(
     content_type: str | None,
     parser_backend: ParserBackend,
 ) -> bool:
-    if parser_backend != "pdftotext":
+    if parser_backend not in {"pdftotext", "document_ai"}:
         return True
-    return _determine_source_media_type(
-        filename=filename,
-        content_type=content_type or "application/octet-stream",
-    ) == "application/pdf"
+    return (
+        _determine_source_media_type(
+            filename=filename,
+            content_type=content_type or "application/octet-stream",
+        )
+        == "application/pdf"
+    )
 
 
 def _build_content_disposition(*, disposition: str, filename: str) -> str:
